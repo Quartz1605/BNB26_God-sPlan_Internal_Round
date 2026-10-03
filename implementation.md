@@ -89,3 +89,5 @@ The pipeline runs entirely in the background so the user's dashboard isn't block
 - **Environment Variables**: `.env` and `.env.example` set up to configure CORS, MongoDB URIs, API keys (Deepgram, OpenRouter, Cloudinary), and auth secrets.
 - **Logging**: Customized python logging system specifically for the CreatorAI modules tracking transcription progress, AI costs, and pipeline steps.
 - **CORS Setup**: Fully configured in `main.py` allowing secure cross-origin communication between the Next.js local server and the FastAPI backend.
+
+hi
