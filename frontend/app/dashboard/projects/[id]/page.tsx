@@ -10,6 +10,14 @@ interface Project {
   name: string;
   description: string;
   created_at: string;
+  hook?: string;
+  script?: string;
+  sections?: any[];
+  visualPlan?: string[];
+  cta?: string;
+  platform?: string;
+  duration?: string;
+  audience?: string;
 }
 
 interface Asset {
@@ -160,105 +168,175 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         <div className="flex items-center gap-3">
           <Link
             href={`/editor/${projectId}`}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gray-900 text-white font-medium hover:bg-gray-800 transition-colors shadow-sm"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#a91d22] to-[#c7262c] text-white font-medium shadow-lg shadow-red-900/20 hover:shadow-xl hover:shadow-red-900/30 hover:-translate-y-0.5 transition-all"
           >
             <Video className="w-5 h-5" />
             Open Editor
           </Link>
-          <button
-            onClick={() => setIsUploadModalOpen(true)}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#a91d22] to-[#c7262c] text-white font-medium shadow-lg shadow-red-900/20 hover:shadow-xl hover:shadow-red-900/30 hover:-translate-y-0.5 transition-all"
-          >
-            <Upload className="w-5 h-5" />
-            Upload Asset
-          </button>
         </div>
       </div>
 
-      {/* Assets Grid */}
-      <div>
-        <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-          Project Assets <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs">{assets.length}</span>
-        </h2>
-
-        {assets.length === 0 ? (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-12 text-center border-dashed">
-            <div className="mx-auto w-16 h-16 bg-red-50 rounded-full flex items-center justify-center text-[#a91d22] mb-4">
-              <Upload className="w-8 h-8" />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-8">
+        {/* Left Column: AI Generated Content Plan */}
+        <div className="lg:col-span-2 space-y-6">
+          
+          <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Platform & Audience</h3>
+            <div className="flex flex-wrap gap-4 text-sm text-gray-700">
+              {project.platform && <span className="bg-gray-100 px-3 py-1 rounded-full">Platform: {project.platform}</span>}
+              {project.duration && <span className="bg-gray-100 px-3 py-1 rounded-full">Duration: {project.duration}</span>}
+              {project.audience && <span className="bg-gray-100 px-3 py-1 rounded-full">Audience: {project.audience}</span>}
             </div>
-            <h3 className="text-gray-900 font-medium mb-1">No assets uploaded yet</h3>
-            <p className="text-gray-500 text-sm mb-6">Upload videos, images, audio, or text files to get started.</p>
-            <button
-              onClick={() => setIsUploadModalOpen(true)}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-[#a91d22]/20 text-[#a91d22] font-medium hover:bg-red-50 transition-colors"
-            >
-              Upload your first asset
-            </button>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {assets.map(asset => (
-              <div key={asset._id} className="group bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md hover:border-[#a91d22]/30 transition-all">
-                {/* Preview Area */}
-                <div className="aspect-video bg-gray-100 relative flex items-center justify-center overflow-hidden">
-                  {asset.asset_type.startsWith('image/') ? (
-                    <img src={asset.file_url} alt={asset.filename} className="w-full h-full object-cover" />
-                  ) : asset.asset_type.startsWith('video/') ? (
-                    <div className="relative w-full h-full bg-gray-900">
-                      <video src={asset.file_url} className="w-full h-full object-cover opacity-70" />
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <Play className="w-10 h-10 text-white/80" />
+
+          {project.hook && (
+            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4">Hook</h3>
+              <p className="text-gray-800 text-sm leading-relaxed p-4 bg-red-50 rounded-xl border border-[#a91d22]/20">{project.hook}</p>
+            </div>
+          )}
+          
+          {project.script && (
+            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4">Script</h3>
+              <div className="text-gray-700 text-sm leading-relaxed whitespace-pre-wrap">{project.script}</div>
+            </div>
+          )}
+
+          {project.sections && project.sections.length > 0 && (
+            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4">Video Blueprint</h3>
+              <div className="space-y-4 relative before:absolute before:inset-0 before:ml-4 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-gray-200 before:to-transparent">
+                {project.sections.map((sec: any, i: number) => (
+                  <div key={i} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
+                    <div className="flex items-center justify-center w-8 h-8 rounded-full border border-white bg-gray-100 text-gray-500 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2">
+                      <span className="text-[10px] font-bold">{sec.start}s</span>
+                    </div>
+                    <div className="w-[calc(100%-3rem)] md:w-[calc(50%-2rem)] p-4 rounded-xl border border-gray-100 bg-gray-50 shadow-sm">
+                      <div className="font-bold text-gray-800 mb-1">{sec.title}</div>
+                      <div className="text-xs text-gray-500 mb-3">{sec.purpose}</div>
+                      <p className="text-sm text-gray-700 italic border-l-2 border-[#a91d22] pl-3">"{sec.script}"</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          {project.visualPlan && project.visualPlan.length > 0 && (
+            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4">Visual Suggestions</h3>
+              <ul className="list-disc pl-5 space-y-2 text-sm text-gray-700">
+                {project.visualPlan.map((vp: string, i: number) => (
+                  <li key={i}>{vp}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {project.cta && (
+            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4">Call to Action</h3>
+              <p className="text-gray-800 text-sm">{project.cta}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Right Column: Assets Side Panel */}
+        <div className="lg:col-span-1">
+          <div className="bg-gray-50/50 p-6 rounded-3xl border border-gray-100 min-h-[500px]">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                Assets <span className="bg-white border border-gray-200 text-gray-600 px-2.5 py-0.5 rounded-full text-xs shadow-sm">{assets.length}</span>
+              </h2>
+              <button
+                onClick={() => setIsUploadModalOpen(true)}
+                className="p-2 rounded-xl bg-white border border-gray-200 text-[#a91d22] hover:bg-red-50 hover:border-[#a91d22]/30 transition-colors shadow-sm"
+                title="Upload Asset"
+              >
+                <Upload className="w-4 h-4" />
+              </button>
+            </div>
+
+            {assets.length === 0 ? (
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center border-dashed">
+                <div className="mx-auto w-12 h-12 bg-red-50 rounded-full flex items-center justify-center text-[#a91d22] mb-3">
+                  <Upload className="w-5 h-5" />
+                </div>
+                <h3 className="text-gray-900 text-sm font-medium mb-1">No assets yet</h3>
+                <p className="text-gray-500 text-xs mb-4">Upload files for your project</p>
+                <button
+                  onClick={() => setIsUploadModalOpen(true)}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-900 text-white text-xs font-medium hover:bg-gray-800 transition-colors"
+                >
+                  Upload File
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {assets.map(asset => (
+                  <div key={asset._id} className="group bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md hover:border-[#a91d22]/30 transition-all flex flex-col">
+                    {/* Preview Area */}
+                    <div className="h-32 bg-gray-100 relative flex items-center justify-center overflow-hidden">
+                      {asset.asset_type.startsWith('image/') ? (
+                        <img src={asset.file_url} alt={asset.filename} className="w-full h-full object-cover" />
+                      ) : asset.asset_type.startsWith('video/') ? (
+                        <div className="relative w-full h-full bg-gray-900">
+                          <video src={asset.file_url} className="w-full h-full object-cover opacity-70" />
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <Play className="w-8 h-8 text-white/80" />
+                          </div>
+                        </div>
+                      ) : (
+                        getAssetIcon(asset.asset_type)
+                      )}
+
+                      {/* Hover Actions */}
+                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 backdrop-blur-sm">
+                        <a
+                          href={asset.file_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="p-1.5 bg-white/20 hover:bg-white/40 rounded-lg text-white backdrop-blur-md transition-colors"
+                        >
+                          <ArrowLeft className="w-4 h-4 rotate-135 transform origin-center" style={{ transform: 'rotate(135deg)' }} />
+                        </a>
+                        <button
+                          onClick={() => deleteAsset(asset._id)}
+                          className="p-1.5 bg-red-500/80 hover:bg-red-500 rounded-lg text-white backdrop-blur-md transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
                     </div>
-                  ) : (
-                    getAssetIcon(asset.asset_type)
-                  )}
 
-                  {/* Hover Actions */}
-                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3 backdrop-blur-sm">
-                    <a
-                      href={asset.file_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="p-2 bg-white/20 hover:bg-white/40 rounded-lg text-white backdrop-blur-md transition-colors"
-                    >
-                      <ArrowLeft className="w-5 h-5 rotate-135 transform origin-center" style={{ transform: 'rotate(135deg)' }} />
-                      {/* Using ArrowLeft rotated as a generic "open" icon if external-link is missing */}
-                    </a>
-                    <button
-                      onClick={() => deleteAsset(asset._id)}
-                      className="p-2 bg-red-500/80 hover:bg-red-500 rounded-lg text-white backdrop-blur-md transition-colors"
-                    >
-                      <Trash2 className="w-5 h-5" />
-                    </button>
+                    {/* Details */}
+                    <div className="p-3">
+                      <h3 className="font-medium text-gray-900 text-sm truncate" title={asset.filename}>
+                        {asset.filename}
+                      </h3>
+                      <div className="flex items-center justify-between mt-1 text-[10px] text-gray-500">
+                        <span className="uppercase font-medium tracking-wider bg-gray-100 px-1.5 py-0.5 rounded">
+                          {asset.asset_type.split('/')[0]}
+                        </span>
+                        <span>{formatSize(asset.file_size)}</span>
+                      </div>
+                      {asset.asset_type.startsWith('video/') && (
+                        <Link
+                          href={`/dashboard/projects/${projectId}/assets/${asset._id}`}
+                          className="mt-2 w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg bg-gray-50 hover:bg-red-50 text-gray-700 hover:text-[#a91d22] border border-gray-200 hover:border-[#a91d22]/30 text-xs font-medium transition-all"
+                        >
+                          <Sparkles className="w-3 h-3" />
+                          Analyze
+                        </Link>
+                      )}
+                    </div>
                   </div>
-                </div>
-
-                {/* Details */}
-                <div className="p-4">
-                  <h3 className="font-medium text-gray-900 truncate" title={asset.filename}>
-                    {asset.filename}
-                  </h3>
-                  <div className="flex items-center justify-between mt-2 text-xs text-gray-500">
-                    <span className="uppercase font-medium tracking-wider bg-gray-100 px-2 py-0.5 rounded">
-                      {asset.asset_type.split('/')[0]}
-                    </span>
-                    <span>{formatSize(asset.file_size)}</span>
-                  </div>
-                  {asset.asset_type.startsWith('video/') && (
-                    <Link
-                      href={`/dashboard/projects/${projectId}/assets/${asset._id}`}
-                      className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-gradient-to-r from-[#a91d22] to-[#c7262c] text-white text-xs font-medium shadow-md shadow-red-900/20 hover:shadow-lg hover:shadow-red-900/30 transition-all"
-                    >
-                      <Sparkles className="w-3.5 h-3.5" />
-                      AI Analyze & Clip
-                    </Link>
-                  )}
-                </div>
+                ))}
               </div>
-            ))}
+            )}
           </div>
-        )}
+        </div>
       </div>
 
       {/* Upload Modal */}
