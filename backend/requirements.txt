@@ -3,3 +3,5 @@ motor
 httpx
 PyJWT
 python-dotenv
+cloudinary
+python-multipart

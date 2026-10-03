@@ -14,7 +14,7 @@ export default function LandingPage() {
     })
       .then((res) => {
         if (res.ok) {
-          router.push("/home");
+          router.push("/dashboard");
         } else {
           setIsLoading(false);
         }

@@ -8,6 +8,7 @@ load_dotenv()
 
 from database import client
 from auth.router import router as auth_router
+from api.projects import router as projects_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -29,6 +30,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+app.include_router(projects_router)
 
 @app.get("/")
 async def root():
