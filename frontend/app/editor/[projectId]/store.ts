@@ -39,6 +39,14 @@ export interface EditorTrack {
   muted?: boolean; // Audio only
 }
 
+export interface CaptionSettings {
+  enabled: boolean;
+  source: string;
+  style: string;
+  position: string;
+
+}
+
 export interface TimelineKeyframe {
   id: string;
   time: number; // Absolute position on project timeline in seconds (e.g. 14.0)
@@ -49,6 +57,7 @@ export interface ProjectSettings {
   duration: number; // total timeline duration in seconds
   aspectRatio: '16:9' | '9:16' | '1:1' | '4:5';
   fps: number;
+  captions: CaptionSettings;
 }
 
 export interface EditorState {
@@ -95,6 +104,7 @@ export interface EditorState {
   
   // Persistence
   setEditorState: (state: Partial<EditorState>) => void;
+  updateSettings: (updates: Partial<ProjectSettings>) => void;
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({
@@ -103,6 +113,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     duration: 300, // 5 minutes default
     aspectRatio: '16:9',
     fps: 30,
+    captions: {
+      enabled: false,
+      source: 'deepgram',
+      style: 'standard',
+      position: 'bottom'
+    }
   },
   tracks: [
     { id: 'track-t1', type: 'text', name: 'T1', locked: false, hidden: false },
@@ -356,6 +372,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     };
   }),
   
-  setEditorState: (newState) => set(newState)
+  setEditorState: (newState) => set(newState),
+  updateSettings: (updates) => set((state) => ({ settings: { ...state.settings, ...updates } }))
 }));
 
