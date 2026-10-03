@@ -3,6 +3,7 @@
 import React, { useRef, useEffect, useState } from "react";
 import { useEditorStore } from "./store";
 import { Track, TrackHeader } from "./Track";
+import { Diamond, Plus } from "lucide-react";
 
 export function Timeline() {
   const { 
@@ -12,7 +13,10 @@ export function Timeline() {
     settings, 
     setPlayhead, 
     isPlaying, 
-    clearSelection 
+    clearSelection,
+    timelineKeyframes,
+    addTimelineKeyframe,
+    removeTimelineKeyframe
   } = useEditorStore();
   
   const timelineRef = useRef<HTMLDivElement>(null);
@@ -113,10 +117,23 @@ export function Timeline() {
 
   return (
     <div className="h-64 border-t border-gray-800 bg-[#111111] flex flex-col shrink-0 overflow-hidden select-none">
-      <div className="h-8 border-b border-gray-800 bg-[#141414] flex items-center px-4 justify-between">
+      <div className="h-9 border-b border-gray-800 bg-[#141414] flex items-center px-4 justify-between">
         <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Timeline</span>
-        <div className="text-xs font-mono text-gray-500">
-          {formatTime(playhead)} / {formatTime(settings.duration)}
+        
+        <div className="flex items-center gap-4">
+          {/* Global Timeline Keyframe Button */}
+          <button
+            onClick={() => addTimelineKeyframe(playhead)}
+            className="px-2.5 py-1 text-xs rounded bg-[#a91d22] hover:bg-[#8e181c] text-white font-medium flex items-center gap-1.5 shadow transition-colors"
+            title="Add global keyframe at current playhead time"
+          >
+            <Diamond className="w-3.5 h-3.5 fill-amber-300 text-amber-300" />
+            + Keyframe @ {playhead.toFixed(1)}s
+          </button>
+
+          <div className="text-xs font-mono text-gray-400">
+            {formatTime(playhead)} / {formatTime(settings.duration)}
+          </div>
         </div>
       </div>
       
@@ -144,13 +161,43 @@ export function Timeline() {
           >
             {/* Ruler area (interactive for scrubbing) */}
             <div 
-              className="h-6 border-b border-gray-800 bg-[#141414] opacity-50 sticky top-0 z-10 cursor-col-resize"
+              className="h-6 border-b border-gray-800 bg-[#141414] sticky top-0 z-10 cursor-col-resize overflow-visible"
               onPointerDown={handleScrubDown}
               onPointerMove={handleScrubMove}
               onPointerUp={handleScrubUp}
               onPointerCancel={handleScrubUp}
             >
               {generateRulerTicks()}
+
+              {/* Render Timeline Keyframe Diamond Markers on Ruler */}
+              {timelineKeyframes && timelineKeyframes.map((tk) => {
+                const leftPx = tk.time * zoom;
+                const isActive = Math.abs(playhead - tk.time) < 0.08;
+                return (
+                  <div
+                    key={tk.id}
+                    className="absolute top-0 bottom-0 z-30 -translate-x-1/2 cursor-pointer p-0.5 group flex items-center justify-center"
+                    style={{ left: `${leftPx}px` }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPlayhead(tk.time);
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      removeTimelineKeyframe(tk.id);
+                    }}
+                    title={`${tk.label} (Click to seek, Right-click to remove)`}
+                  >
+                    <Diamond
+                      className={`w-3.5 h-3.5 transition-transform group-hover:scale-125 ${
+                        isActive
+                          ? 'fill-amber-300 text-amber-300 drop-shadow-[0_0_6px_rgba(252,211,77,0.9)] scale-125'
+                          : 'fill-amber-400 text-amber-500'
+                      }`}
+                    />
+                  </div>
+                );
+              })}
             </div>
             
             {/* Tracks */}

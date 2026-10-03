@@ -5,14 +5,13 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft, Undo2, Redo2, Download, Play, Pause, SkipBack, SkipForward,
-  Settings, Film, Music, Image as ImageIcon, Type, Layers, Upload, Plus, Save, Sparkles, Send
+  Settings, Film, Music, Image as ImageIcon, Type, Layers, Upload, Plus, Save, Sparkles, Send, Diamond
 } from "lucide-react";
 import { useEditorStore } from "./store";
 import { Timeline } from "./Timeline";
 import { Canvas } from "./Canvas";
 import { Inspector } from "./Inspector";
 import { AiAssistantPanel } from "./AiAssistantPanel";
-
 
 interface Asset {
   _id: string;
@@ -55,7 +54,8 @@ export default function EditorPage() {
     tracks,
     clips,
     settings,
-    setEditorState
+    setEditorState,
+    addTimelineKeyframe
   } = useEditorStore();
 
   const [isSaving, setIsSaving] = useState(false);
@@ -462,8 +462,8 @@ export default function EditorPage() {
             <button onClick={() => setIsPlaying(!isPlaying)} className="p-2 bg-gray-800 hover:bg-gray-700 rounded-full text-white">
               {isPlaying ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current translate-x-[1px]" />}
             </button>
-            
             <button 
+              onClick={() => setPlayhead(settings.duration)}
               className="p-1.5 hover:bg-gray-800 rounded-full transition-colors text-gray-400 hover:text-white"
             >
               <SkipForward className="w-4 h-4 fill-current" />
