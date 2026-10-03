@@ -2,8 +2,8 @@ import os
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from bson import ObjectId
-import cloudinary
-import cloudinary.uploader
+import boto3
+from botocore.exceptions import NoCredentialsError
 from typing import List
 
 from database import client
@@ -16,13 +16,14 @@ load_dotenv()
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
-# Configure Cloudinary
-cloudinary.config(
-    cloud_name=os.environ.get("CLOUDINARY_CLOUD_NAME", "dtx3ldhne"), # Replace with actual cloud name or add to .env
-    api_key=os.environ.get("CLOUDINARY_API_KEY"),
-    api_secret=os.environ.get("CLOUDINARY_API_SECRET"),
-    secure=True
+# Configure S3 client
+s3_client = boto3.client(
+    's3',
+    aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
+    aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY'),
+    region_name=os.environ.get('AWS_REGION', 'eu-north-1')
 )
+AWS_BUCKET_NAME = os.environ.get('AWS_BUCKET_NAME', 'godsplan-creatorai')
 
 def get_db():
     return client.get_default_database()
@@ -85,7 +86,7 @@ async def upload_asset(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
         
-    # Upload to Cloudinary
+    # Upload to AWS S3
     temp_file_path = None
     try:
         import tempfile
@@ -96,33 +97,32 @@ async def upload_asset(
             shutil.copyfileobj(file.file, tmp)
             temp_file_path = tmp.name
 
-        # For video/audio use resource_type='video' or 'auto'
-        resource_type = "auto"
-        if file.content_type.startswith("video/"):
-            resource_type = "video"
-        elif file.content_type.startswith("image/"):
-            resource_type = "image"
-            
-        # Use upload for all, but add chunk_size for videos
-        if resource_type == "video":
-            upload_result = cloudinary.uploader.upload(
-                temp_file_path, 
-                resource_type=resource_type,
-                folder=f"creatorai/{user['_id']}/{project_id}",
-                chunk_size=6000000
-            )
-        else:
-            upload_result = cloudinary.uploader.upload(
-                temp_file_path, 
-                resource_type=resource_type,
-                folder=f"creatorai/{user['_id']}/{project_id}"
-            )
+        # Construct S3 key
+        s3_key = f"creatorai/{user['_id']}/{project_id}/{file.filename}"
         
-        file_url = upload_result.get("secure_url")
-        file_size = upload_result.get("bytes", 0)
+        # Upload to S3
+        s3_client.upload_file(
+            temp_file_path,
+            AWS_BUCKET_NAME,
+            s3_key,
+            ExtraArgs={'ContentType': file.content_type}
+        )
+        
+        # Generate S3 URL
+        # For public buckets, you can construct the URL directly:
+        # file_url = f"https://{AWS_BUCKET_NAME}.s3.{os.environ.get('AWS_REGION', 'eu-north-1')}.amazonaws.com/{s3_key}"
+        # For private buckets, generate a presigned URL:
+        file_url = s3_client.generate_presigned_url(
+            'get_object',
+            Params={'Bucket': AWS_BUCKET_NAME, 'Key': s3_key},
+            ExpiresIn=3600  # URL expires in 1 hour
+        )
+        
+        # file_size can be extracted from the temporary file
+        file_size = os.path.getsize(temp_file_path)
     except Exception as e:
-        print(f"Cloudinary upload error: {str(e)}") # Add logging for debug
-        raise HTTPException(status_code=500, detail=f"Failed to upload to Cloudinary: {str(e)}")
+        print(f"S3 upload error: {str(e)}") # Add logging for debug
+        raise HTTPException(status_code=500, detail=f"Failed to upload to S3: {str(e)}")
     finally:
         if temp_file_path and os.path.exists(temp_file_path):
             os.remove(temp_file_path)

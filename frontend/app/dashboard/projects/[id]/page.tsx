@@ -157,13 +157,22 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             <p className="text-sm text-gray-500 mt-1">{project.description || "No description provided."}</p>
           </div>
         </div>
-        <button
-          onClick={() => setIsUploadModalOpen(true)}
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#a91d22] to-[#c7262c] text-white font-medium shadow-lg shadow-red-900/20 hover:shadow-xl hover:shadow-red-900/30 hover:-translate-y-0.5 transition-all"
-        >
-          <Upload className="w-5 h-5" />
-          Upload Asset
-        </button>
+        <div className="flex items-center gap-3">
+          <Link
+            href={`/editor/${projectId}`}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gray-900 text-white font-medium hover:bg-gray-800 transition-colors shadow-sm"
+          >
+            <Video className="w-5 h-5" />
+            Open Editor
+          </Link>
+          <button
+            onClick={() => setIsUploadModalOpen(true)}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#a91d22] to-[#c7262c] text-white font-medium shadow-lg shadow-red-900/20 hover:shadow-xl hover:shadow-red-900/30 hover:-translate-y-0.5 transition-all"
+          >
+            <Upload className="w-5 h-5" />
+            Upload Asset
+          </button>
+        </div>
       </div>
 
       {/* Assets Grid */}
