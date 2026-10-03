@@ -4,22 +4,14 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  ArrowLeft,
-  Undo2,
-  Redo2,
-  Download,
-  Play,
-  Pause,
-  SkipBack,
-  SkipForward,
-  Settings,
-  Film,
-  Music,
-  Image as ImageIcon,
-  Type,
-  Layers,
-  Upload,
+  ArrowLeft, Undo2, Redo2, Download, Play, Pause, SkipBack, SkipForward,
+  Settings, Film, Music, Image as ImageIcon, Type, Layers, Upload, Plus, Save, Sparkles, Send
 } from "lucide-react";
+import { useEditorStore } from "./store";
+import { Timeline } from "./Timeline";
+import { Canvas } from "./Canvas";
+import { Inspector } from "./Inspector";
+import { AiAssistantPanel } from "./AiAssistantPanel";
 
 interface Asset {
   _id: string;
@@ -32,33 +24,197 @@ interface Asset {
 export default function EditorPage() {
   const { projectId } = useParams();
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"media" | "text" | "effects">("media");
+  const [activeTab, setActiveTab] = useState<"media" | "text" | "effects" | "ai">("media");
   const [assets, setAssets] = useState<Asset[]>([]);
-  const [isPlaying, setIsPlaying] = useState(false);
   const [project, setProject] = useState<any>(null);
 
-  // Authentication and project fetching check
+  const { 
+    playhead, 
+    isPlaying, 
+    setIsPlaying, 
+    setPlayhead, 
+    undo, 
+    redo,
+    history,
+    addClip,
+    tracks,
+    clips,
+    settings,
+    setEditorState
+  } = useEditorStore();
+
+  const [isSaving, setIsSaving] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const canUndo = history.past.length > 0;
+  const canRedo = history.future.length > 0;
+
+  // Format time helper for the preview area
+  const formatTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    const ms = Math.floor((seconds % 1) * 100);
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}:${ms.toString().padStart(2, '0')}`;
+  };
+
   useEffect(() => {
     fetch("http://localhost:8000/auth/me", { credentials: "include" })
-      .then((res) => {
-        if (!res.ok) router.push("/");
-      })
+      .then((res) => { if (!res.ok) router.push("/"); })
       .catch(() => router.push("/"));
 
-    // Fetch Project
     fetch(`http://localhost:8000/projects/${projectId}`, { credentials: "include" })
       .then((res) => res.json())
-      .then((data) => setProject(data))
-      .catch((err) => console.error("Error fetching project:", err));
+      .then((data) => {
+        setProject(data);
+        if (data.state) {
+          setEditorState(data.state);
+        }
+      })
+      .catch(console.error);
 
-    // Fetch Assets
     fetch(`http://localhost:8000/projects/${projectId}/assets`, { credentials: "include" })
       .then((res) => res.json())
       .then((data) => {
-        if (Array.isArray(data)) setAssets(data);
+        if (Array.isArray(data)) {
+          setAssets(data);
+          
+          // Update clips with fresh presigned URLs to prevent expiration issues
+          const currentClips = useEditorStore.getState().clips;
+          let needsUpdate = false;
+          const updatedClips = currentClips.map(clip => {
+            if (clip.assetId) {
+              const freshAsset = data.find((a: any) => a._id === clip.assetId);
+              if (freshAsset && freshAsset.file_url !== clip.fileUrl) {
+                needsUpdate = true;
+                return { ...clip, fileUrl: freshAsset.file_url };
+              }
+            }
+            return clip;
+          });
+          
+          if (needsUpdate) {
+            setEditorState({ clips: updatedClips });
+          }
+        }
       })
-      .catch((err) => console.error("Error fetching assets:", err));
+      .catch(console.error);
   }, [projectId, router]);
+
+  // Global Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger if user is typing in an input field
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (canRedo) redo();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (canUndo) undo();
+      } else if (e.key === 'Backspace' || e.key === 'Delete') {
+        const { selectedClipIds, removeClip } = useEditorStore.getState();
+        if (selectedClipIds.length > 0) {
+          e.preventDefault();
+          selectedClipIds.forEach(id => removeClip(id));
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [canUndo, canRedo, undo, redo]);
+
+  const handleAddAssetToTimeline = (asset: Asset) => {
+    // Determine track based on asset type
+    const isAudio = asset.asset_type.startsWith('audio');
+    const track = tracks.find(t => isAudio ? t.type === 'audio' : t.type === 'video');
+    
+    if (track) {
+      addClip({
+        assetId: asset._id,
+        trackId: track.id,
+        startTime: playhead, // Insert at playhead
+        duration: 5, // Default duration, ideally we read metadata
+        sourceStart: 0,
+        sourceEnd: 5,
+        name: asset.filename,
+        type: isAudio ? 'audio' : (asset.asset_type.startsWith('image') ? 'image' : 'video') as any,
+        fileUrl: asset.file_url
+      });
+    }
+  };
+
+  const handleAddTextToTimeline = () => {
+    const textTrack = tracks.find(t => t.type === 'text') || tracks[0];
+    addClip({
+      assetId: "text-asset",
+      trackId: textTrack.id,
+      startTime: playhead,
+      duration: 3,
+      sourceStart: 0,
+      sourceEnd: 3,
+      name: "Basic Text",
+      type: "text",
+      textContent: "New Text Clip",
+      fontSize: 48,
+      color: "#ffffff"
+    });
+  };
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      const stateToSave = { tracks, clips, settings };
+      const res = await fetch(`http://localhost:8000/projects/${projectId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ state: stateToSave }),
+        credentials: "include"
+      });
+      if (res.ok) {
+        // Just silent success or small notification
+        console.log("Project saved successfully!");
+      } else {
+        alert("Failed to save project");
+      }
+    } catch (err) {
+      console.error("Save error", err);
+      alert("Error saving project");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleExport = async () => {
+    // Save first
+    await handleSave();
+    
+    setIsExporting(true);
+    try {
+      const res = await fetch(`http://localhost:8000/projects/${projectId}/export`, {
+        method: "POST",
+        credentials: "include"
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        setIsExporting(false);
+        const shouldDownload = window.confirm("Export Complete! Click OK to open your exported video.");
+        if (shouldDownload && data.export_url) {
+          // Setting location.href avoids popup blockers better than window.open in some async contexts
+          window.location.href = data.export_url;
+        }
+      } else {
+        alert("Failed to export project");
+        setIsExporting(false);
+      }
+    } catch (err) {
+      console.error("Export error", err);
+      alert("Error exporting project");
+      setIsExporting(false);
+    }
+  };
 
   return (
     <div className="flex flex-col h-screen w-screen bg-[#0e0e0e] text-white font-sans overflow-hidden">
@@ -82,21 +238,40 @@ export default function EditorPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <button className="p-1.5 hover:bg-gray-800 rounded-md transition-colors text-gray-400 hover:text-white" title="Undo (Ctrl+Z)">
+          <button 
+            onClick={undo}
+            disabled={!canUndo}
+            className={`p-1.5 rounded-md transition-colors ${canUndo ? 'text-gray-400 hover:text-white hover:bg-gray-800' : 'text-gray-700 cursor-not-allowed'}`}
+            title="Undo (Ctrl+Z)"
+          >
             <Undo2 className="w-4 h-4" />
           </button>
-          <button className="p-1.5 hover:bg-gray-800 rounded-md transition-colors text-gray-400 hover:text-white" title="Redo (Ctrl+Shift+Z)">
+          <button 
+            onClick={redo}
+            disabled={!canRedo}
+            className={`p-1.5 rounded-md transition-colors ${canRedo ? 'text-gray-400 hover:text-white hover:bg-gray-800' : 'text-gray-700 cursor-not-allowed'}`}
+            title="Redo (Ctrl+Shift+Z)"
+          >
             <Redo2 className="w-4 h-4" />
           </button>
         </div>
 
         <div className="flex items-center gap-3">
-          <button className="p-1.5 hover:bg-gray-800 rounded-md transition-colors text-gray-400 hover:text-white">
-            <Settings className="w-4 h-4" />
+          <button 
+            onClick={handleSave}
+            disabled={isSaving || isExporting}
+            className="flex items-center gap-2 px-4 py-1.5 bg-gray-800 hover:bg-gray-700 text-white text-sm font-medium rounded-md transition-colors"
+          >
+            {isSaving ? <span className="animate-spin text-lg leading-none">⟳</span> : <Save className="w-4 h-4" />}
+            Save
           </button>
-          <button className="flex items-center gap-2 px-4 py-1.5 bg-[#a91d22] hover:bg-[#c7262c] text-white text-sm font-medium rounded-md transition-colors">
-            <Download className="w-4 h-4" />
-            Export
+          <button 
+            onClick={handleExport}
+            disabled={isExporting}
+            className={`flex items-center gap-2 px-4 py-1.5 ${isExporting ? 'bg-[#c7262c] opacity-80 cursor-wait' : 'bg-[#a91d22] hover:bg-[#c7262c]'} text-white text-sm font-medium rounded-md transition-colors`}
+          >
+            {isExporting ? <span className="animate-spin text-lg leading-none">⟳</span> : <Download className="w-4 h-4" />}
+            {isExporting ? 'Exporting...' : 'Export'}
           </button>
         </div>
       </header>
@@ -132,6 +307,18 @@ export default function EditorPage() {
           >
             <Layers className="w-5 h-5" />
           </button>
+          
+          <div className="flex-1" />
+          
+          <button
+            onClick={() => setActiveTab("ai")}
+            className={`p-2.5 rounded-xl transition-all mb-4 ${
+              activeTab === "ai" ? "bg-indigo-900/50 text-indigo-400" : "text-gray-500 hover:text-indigo-400"
+            }`}
+            title="CreatorAI Assistant"
+          >
+            <Sparkles className="w-5 h-5" />
+          </button>
         </aside>
 
         {/* Panel Content (Media Library) */}
@@ -141,6 +328,7 @@ export default function EditorPage() {
               {activeTab === "media" && "Project Media"}
               {activeTab === "text" && "Text Templates"}
               {activeTab === "effects" && "Effects"}
+              {activeTab === "ai" && "CreatorAI Assistant"}
             </h2>
             {activeTab === "media" && (
               <button className="p-1 hover:bg-gray-800 rounded-md text-gray-400 hover:text-white transition-colors">
@@ -159,10 +347,11 @@ export default function EditorPage() {
                 ) : (
                   <div className="grid grid-cols-2 gap-2">
                     {assets.map((asset) => (
-                      <div key={asset._id} className="relative group cursor-pointer bg-gray-900 rounded-md overflow-hidden aspect-video border border-gray-800 hover:border-gray-600 transition-colors">
+                      <div key={asset._id} className="relative group bg-gray-900 rounded-md overflow-hidden aspect-video border border-gray-800 hover:border-gray-600 transition-colors">
                         {asset.asset_type.startsWith("video") ? (
-                          <div className="absolute inset-0 flex items-center justify-center bg-gray-950">
-                            <Film className="w-6 h-6 text-gray-700" />
+                          <div className="absolute inset-0 bg-gray-950 flex items-center justify-center">
+                            <video src={asset.file_url} className="w-full h-full object-cover opacity-70" preload="metadata" />
+                            <Film className="w-6 h-6 text-gray-400 absolute" />
                           </div>
                         ) : asset.asset_type.startsWith("image") ? (
                           <img src={asset.file_url} alt={asset.filename} className="w-full h-full object-cover" />
@@ -171,8 +360,15 @@ export default function EditorPage() {
                             <Music className="w-6 h-6 text-gray-700" />
                           </div>
                         )}
-                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <p className="text-[10px] truncate">{asset.filename}</p>
+                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent p-1.5 opacity-0 group-hover:opacity-100 transition-opacity flex justify-between items-end">
+                          <p className="text-[10px] truncate max-w-[80%]">{asset.filename}</p>
+                          <button 
+                            onClick={() => handleAddAssetToTimeline(asset)}
+                            className="bg-[#a91d22] hover:bg-[#c7262c] text-white rounded p-0.5"
+                            title="Add to timeline"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -181,32 +377,40 @@ export default function EditorPage() {
               </div>
             )}
             
-            {activeTab !== "media" && (
-              <div className="text-center py-8 text-xs text-gray-600">
-                Coming in next phase
+            {activeTab === "text" && (
+              <div className="space-y-3">
+                <button 
+                  onClick={handleAddTextToTimeline}
+                  className="w-full p-3 bg-gray-900 border border-gray-800 rounded-lg hover:border-gray-600 transition-colors flex flex-col items-center justify-center gap-2"
+                >
+                  <Type className="w-6 h-6 text-gray-400" />
+                  <span className="text-sm font-medium">Add Basic Text</span>
+                </button>
               </div>
+            )}
+            
+            {activeTab === "effects" && (
+              <div className="text-center py-8 text-xs text-gray-600">
+                Check the Inspector panel to apply crazy effects like Glitch, VHS, and Blur to your selected clips!
+              </div>
+            )}
+            
+            {activeTab === "ai" && (
+              <AiAssistantPanel />
             )}
           </div>
         </div>
 
         {/* Center Canvas / Preview */}
         <div className="flex-1 flex flex-col min-w-0 bg-black relative">
-          {/* Canvas Area */}
-          <div className="flex-1 flex items-center justify-center p-4">
-            <div className="aspect-video w-full max-w-4xl bg-[#111] rounded-lg shadow-2xl border border-gray-800/50 flex flex-col items-center justify-center relative overflow-hidden">
-              <span className="text-gray-700 text-sm flex items-center gap-2">
-                <Film className="w-5 h-5" /> Preview Canvas
-              </span>
-              
-              {/* Future Video Element will go here */}
-            </div>
-          </div>
-
+          <Canvas />
+          
           {/* Playback Controls */}
-          <div className="h-12 border-t border-gray-800 bg-[#141414] flex items-center justify-center gap-4 px-4">
-            <span className="text-xs font-mono text-gray-400 absolute left-4">00:00:00:00</span>
-            
-            <button className="p-1.5 hover:bg-gray-800 rounded-full transition-colors text-gray-400 hover:text-white">
+          <div className="h-12 border-t border-gray-800 bg-[#141414] flex items-center justify-center gap-4 px-4 shrink-0">
+            <button 
+              onClick={() => setPlayhead(0)}
+              className="p-1.5 hover:bg-gray-800 rounded-full transition-colors text-gray-400 hover:text-white"
+            >
               <SkipBack className="w-4 h-4 fill-current" />
             </button>
             
@@ -217,56 +421,20 @@ export default function EditorPage() {
               {isPlaying ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current translate-x-[1px]" />}
             </button>
             
-            <button className="p-1.5 hover:bg-gray-800 rounded-full transition-colors text-gray-400 hover:text-white">
+            <button 
+              className="p-1.5 hover:bg-gray-800 rounded-full transition-colors text-gray-400 hover:text-white"
+            >
               <SkipForward className="w-4 h-4 fill-current" />
             </button>
-            
-            <span className="text-xs font-mono text-gray-600 absolute right-4">00:05:32:15</span>
           </div>
         </div>
+
+        {/* Right Sidebar (Inspector) */}
+        <Inspector />
       </div>
 
       {/* Bottom Panel (Timeline) */}
-      <div className="h-64 border-t border-gray-800 bg-[#111111] flex flex-col shrink-0">
-        <div className="h-8 border-b border-gray-800 bg-[#141414] flex items-center px-4">
-          <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Timeline</span>
-        </div>
-        <div className="flex-1 flex">
-          {/* Track Headers */}
-          <div className="w-48 border-r border-gray-800 bg-[#161616] flex flex-col">
-            <div className="h-14 border-b border-gray-800/50 flex items-center px-3 group">
-              <span className="text-xs text-gray-400 group-hover:text-white transition-colors">V1</span>
-            </div>
-            <div className="h-14 border-b border-gray-800/50 flex items-center px-3 group">
-              <span className="text-xs text-gray-400 group-hover:text-white transition-colors">A1</span>
-            </div>
-          </div>
-          
-          {/* Track Content (Ruler + Clips Placeholder) */}
-          <div className="flex-1 bg-[#0f0f0f] relative overflow-hidden flex flex-col">
-            <div className="h-6 border-b border-gray-800 bg-[#141414] opacity-50">
-              {/* Time ruler ticks placeholder */}
-            </div>
-            
-            {/* Playhead Line */}
-            <div className="absolute top-0 bottom-0 left-[20%] w-[1px] bg-[#a91d22] z-10">
-              <div className="absolute -top-1 -left-[5px] w-0 h-0 border-l-[5px] border-r-[5px] border-t-[8px] border-l-transparent border-r-transparent border-t-[#a91d22]"></div>
-            </div>
-            
-            {/* Tracks */}
-            <div className="h-14 border-b border-gray-800/20 relative flex items-center">
-              <div className="absolute left-[5%] right-[60%] h-10 top-2 bg-indigo-600/40 border border-indigo-500/60 rounded flex items-center px-2 cursor-pointer hover:bg-indigo-600/60 transition-colors">
-                <span className="text-[10px] font-medium truncate">sample_video_1.mp4</span>
-              </div>
-            </div>
-            <div className="h-14 border-b border-gray-800/20 relative flex items-center">
-              <div className="absolute left-[5%] right-[60%] h-10 top-2 bg-emerald-600/30 border border-emerald-500/40 rounded flex items-center px-2 cursor-pointer hover:bg-emerald-600/50 transition-colors">
-                <span className="text-[10px] font-medium truncate">audio waveform</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <Timeline />
     </div>
   );
 }

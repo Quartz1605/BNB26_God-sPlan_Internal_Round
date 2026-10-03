@@ -9,6 +9,8 @@ from typing import List
 from database import client
 from auth.router import get_current_user
 from .schemas import ProjectCreate, ProjectResponse, AssetResponse
+import httpx
+import json
 
 from dotenv import load_dotenv
 
@@ -16,14 +18,23 @@ load_dotenv()
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
+import botocore
+
 # Configure S3 client
 s3_client = boto3.client(
-    's3',
-    aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
-    aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY'),
-    region_name=os.environ.get('AWS_REGION', 'eu-north-1')
+    "s3",
+    aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"].strip(),
+    aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"].strip(),
+    region_name="eu-north-1",
+    endpoint_url="https://s3.eu-north-1.amazonaws.com",
+    config=botocore.client.Config(
+        signature_version="s3v4",
+        s3={
+            "addressing_style": "virtual"
+        }
+    )
 )
-AWS_BUCKET_NAME = os.environ.get('AWS_BUCKET_NAME', 'godsplan-creatorai')
+AWS_BUCKET_NAME = os.environ.get('AWS_BUCKET_NAME', 'godsplan-creatorai').strip()
 
 def get_db():
     return client.get_default_database()
@@ -61,6 +72,24 @@ async def get_project(project_id: str, user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Project not found")
     project["_id"] = str(project["_id"])
     return project
+
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Body
+
+@router.patch("/{project_id}")
+async def update_project(project_id: str, update_data: dict = Body(...), user: dict = Depends(get_current_user)):
+    db = get_db()
+    
+    update_data["updated_at"] = datetime.now(timezone.utc)
+    
+    result = await db.projects.update_one(
+        {"_id": ObjectId(project_id), "user_id": str(user["_id"])},
+        {"$set": update_data}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Project not found")
+        
+    return {"message": "Project updated successfully"}
 
 @router.delete("/{project_id}")
 async def delete_project(project_id: str, user: dict = Depends(get_current_user)):
@@ -153,8 +182,22 @@ async def get_project_assets(project_id: str, user: dict = Depends(get_current_u
         
     cursor = db.assets.find({"project_id": project_id, "user_id": str(user["_id"])})
     assets = await cursor.to_list(length=100)
+    
     for a in assets:
         a["_id"] = str(a["_id"])
+        
+        # Regenerate fresh presigned URL to prevent expiration
+        s3_key = f"creatorai/{user['_id']}/{project_id}/{a['filename']}"
+        try:
+            fresh_url = s3_client.generate_presigned_url(
+                'get_object',
+                Params={'Bucket': AWS_BUCKET_NAME, 'Key': s3_key},
+                ExpiresIn=3600
+            )
+            a["file_url"] = fresh_url
+        except Exception as e:
+            print(f"Failed to regenerate presigned URL for {a['filename']}: {e}")
+            
     return assets
 
 @router.delete("/{project_id}/assets/{asset_id}")
@@ -169,3 +212,143 @@ async def delete_asset(project_id: str, asset_id: str, user: dict = Depends(get_
         raise HTTPException(status_code=404, detail="Asset not found")
     
     return {"message": "Asset deleted successfully"}
+
+@router.post("/{project_id}/export")
+async def export_project(
+    project_id: str,
+    payload: dict = Body(None),
+    user: dict = Depends(get_current_user)
+):
+    db = get_db()
+    project = await db.projects.find_one({"_id": ObjectId(project_id), "user_id": str(user["_id"])})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+        
+    export_key = f"creatorai/exports/{user['_id']}/{project_id}/final_export.mp4"
+    source_key = None
+    
+    # 1. READ TIMELINE STATE (Single source of truth)
+    # The frontend is expected to pass the state in the payload, or we read from DB.
+    # In a full FFmpeg implementation, we would construct an EDL (Edit Decision List) here.
+    state = project.get("state", {})
+    clips = state.get("clips", [])
+    
+    # 2. Sort clips by timeline position (as requested by architecture)
+    clips.sort(key=lambda c: c.get("startTime", 0))
+    
+    # Mock Export: For this hackathon, we will grab the first valid video from the actual timeline
+    # rather than just the first asset uploaded.
+    for clip in clips:
+        if clip.get("type") in ["video", "image"] and clip.get("assetId"):
+            asset = await db.assets.find_one({"_id": ObjectId(clip["assetId"])})
+            if asset:
+                source_key = f"creatorai/{user['_id']}/{project_id}/{asset['filename']}"
+                break
+            
+    if not source_key:
+        import tempfile
+        import os
+        with tempfile.NamedTemporaryFile(mode='w', delete=False) as tmp:
+            tmp.write(f"Timeline EDL for project {project_id}:\n{clips}")
+            tmp_path = tmp.name
+        
+        export_key = f"creatorai/exports/{user['_id']}/{project_id}/export_data.txt"
+        s3_client.upload_file(tmp_path, AWS_BUCKET_NAME, export_key)
+        os.remove(tmp_path)
+    else:
+        try:
+            s3_client.copy_object(
+                Bucket=AWS_BUCKET_NAME,
+                CopySource={'Bucket': AWS_BUCKET_NAME, 'Key': source_key},
+                Key=export_key
+            )
+        except Exception as e:
+            print("Failed to copy object in S3 for export:", e)
+            raise HTTPException(status_code=500, detail="Failed to render export.")
+
+    # Generate presigned URL for the exported file
+    export_url = s3_client.generate_presigned_url(
+        'get_object',
+        Params={'Bucket': AWS_BUCKET_NAME, 'Key': export_key},
+        ExpiresIn=3600
+    )
+    
+    # Update project with export URL
+    await db.projects.update_one(
+        {"_id": ObjectId(project_id)},
+        {"$set": {"last_export_url": export_url}}
+    )
+    
+    return {"message": "Export completed successfully", "export_url": export_url}
+    
+@router.post("/{project_id}/ai-command")
+async def process_ai_command(
+    project_id: str,
+    payload: dict = Body(...),
+    user: dict = Depends(get_current_user)
+):
+    prompt = payload.get("prompt")
+    context = payload.get("context")
+    
+    if not prompt:
+        raise HTTPException(status_code=400, detail="Prompt is required")
+        
+    openrouter_api_key = os.environ.get("OPENROUTER_API_KEY")
+    if not openrouter_api_key:
+        raise HTTPException(status_code=500, detail="OpenRouter API key not configured")
+        
+    system_prompt = """
+    You are an AI video editing assistant for CreatorAI. 
+    You receive the current editor context (timeline, playhead, tracks, clips) and a user command.
+    You must output ONLY valid JSON containing a response message and an array of commands to execute.
+    Supported command types: "add_text", "apply_effect", "add_clip", "remove_clip".
+    
+    Example output format:
+    {
+      "message": "I've added a text clip.",
+      "commands": [
+        {
+          "type": "add_text",
+          "content": "Hello World",
+          "timelineStart": 0,
+          "timelineDuration": 5
+        }
+      ]
+    }
+    """
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {openrouter_api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "google/gemini-flash-1.5-exp", # Using gemini flash as requested
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": f"Context: {json.dumps(context)}\n\nUser Command: {prompt}"}
+                    ],
+                    "response_format": {"type": "json_object"}
+                },
+                timeout=15.0
+            )
+            
+            response.raise_for_status()
+            data = response.json()
+            content = data["choices"][0]["message"]["content"]
+            
+            # Clean up markdown if the model returns it
+            if content.startswith("```json"):
+                content = content[7:-3]
+            elif content.startswith("```"):
+                content = content[3:-3]
+                
+            result = json.loads(content)
+            return result
+            
+    except Exception as e:
+        print(f"AI Command Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to process AI command")
