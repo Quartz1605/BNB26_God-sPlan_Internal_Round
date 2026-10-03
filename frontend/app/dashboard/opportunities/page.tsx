@@ -138,7 +138,7 @@ export default function OpportunitiesPage() {
           </p>
           <button
             onClick={() => router.push("/dashboard/creator-dna")}
-            className="px-6 py-2.5 bg-gradient-to-r from-[#a91d22] to-[#c7262c] text-white rounded-lg font-medium"
+            className="px-6 py-2.5 bg-[#a91d22] hover:bg-[#8b151b] text-white rounded-xl text-xs font-semibold shadow-xs transition-colors"
           >
             Go to Creator DNA
           </button>
@@ -244,7 +244,7 @@ export default function OpportunitiesPage() {
           </p>
           <button
             onClick={handleGenerate}
-            className="px-6 py-2.5 bg-gradient-to-r from-[#a91d22] to-[#c7262c] text-white rounded-lg font-medium shadow-md shadow-red-900/20"
+            className="px-6 py-2.5 bg-[#a91d22] hover:bg-[#8b151b] text-white rounded-xl text-xs font-semibold shadow-xs transition-colors"
           >
             Generate Opportunities
           </button>

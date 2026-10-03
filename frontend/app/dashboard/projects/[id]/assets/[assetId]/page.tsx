@@ -302,7 +302,7 @@ function ClipCandidateCard({
       <div className="p-5">
         <div className="flex items-start justify-between gap-4 mb-3">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#a91d22] to-[#c7262c] flex items-center justify-center text-white text-sm font-bold shadow-sm">
+            <div className="w-8 h-8 rounded-lg bg-[#a91d22] flex items-center justify-center text-white text-xs font-bold shadow-xs">
               {index + 1}
             </div>
             <div>
@@ -371,7 +371,7 @@ function ClipCandidateCard({
           <button
             onClick={onGenerate}
             disabled={isGenerating}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#a91d22] to-[#c7262c] text-white text-sm font-medium shadow-md shadow-red-900/20 hover:shadow-lg hover:shadow-red-900/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#a91d22] hover:bg-[#8b151b] text-white text-xs font-semibold shadow-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isGenerating ? (
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -515,14 +515,14 @@ export default function AssetDetailPage({
         prev
           ? { ...prev, status: "processing", progress: 5, step: "Queued" }
           : {
-              status: "processing",
-              progress: 5,
-              step: "Queued",
-              video_summary: "",
-              topics: [],
-              clip_candidates: [],
-              video_metadata: {},
-            }
+            status: "processing",
+            progress: 5,
+            step: "Queued",
+            video_summary: "",
+            topics: [],
+            clip_candidates: [],
+            video_metadata: {},
+          }
       );
     } catch (err: any) {
       setError(err.message);
@@ -654,7 +654,7 @@ export default function AssetDetailPage({
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
             {hasNeverAnalyzed && (
               <div className="text-center space-y-4">
-                <div className="w-16 h-16 mx-auto bg-gradient-to-br from-red-50 to-amber-50 rounded-2xl flex items-center justify-center">
+                <div className="w-16 h-16 mx-auto bg-slate-100 rounded-2xl flex items-center justify-center">
                   <Sparkles className="w-8 h-8 text-[#a91d22]" />
                 </div>
                 <div>
@@ -665,7 +665,7 @@ export default function AssetDetailPage({
                 </div>
                 <button
                   onClick={handleAnalyze}
-                  className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-[#a91d22] to-[#c7262c] text-white font-medium shadow-lg shadow-red-900/20 hover:shadow-xl hover:shadow-red-900/30 hover:-translate-y-0.5 transition-all"
+                  className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-[#a91d22] hover:bg-[#8b151b] text-white font-semibold text-sm shadow-xs transition-colors"
                 >
                   <Sparkles className="w-5 h-5" />
                   Find Best Clips
@@ -686,9 +686,9 @@ export default function AssetDetailPage({
                 </div>
 
                 {/* Progress bar */}
-                <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
                   <div
-                    className="h-full bg-gradient-to-r from-[#a91d22] to-[#c7262c] rounded-full transition-all duration-500 ease-out"
+                    className="h-full bg-[#a91d22] rounded-full transition-all duration-500 ease-out"
                     style={{ width: `${analysis?.progress || 0}%` }}
                   />
                 </div>
@@ -713,7 +713,7 @@ export default function AssetDetailPage({
                 </div>
                 <button
                   onClick={handleAnalyze}
-                  className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-[#a91d22] to-[#c7262c] text-white font-medium shadow-lg shadow-red-900/20 hover:shadow-xl hover:shadow-red-900/30 transition-all"
+                  className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-[#a91d22] hover:bg-[#8b151b] text-white font-semibold text-sm shadow-xs transition-colors"
                 >
                   <RefreshCw className="w-5 h-5" />
                   Retry Analysis
@@ -797,7 +797,7 @@ export default function AssetDetailPage({
       {isCompleted && candidates.length > 0 && (
         <div>
           <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 bg-gradient-to-br from-amber-100 to-red-100 rounded-xl flex items-center justify-center">
+            <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center">
               <Zap className="w-5 h-5 text-[#a91d22]" />
             </div>
             <div>

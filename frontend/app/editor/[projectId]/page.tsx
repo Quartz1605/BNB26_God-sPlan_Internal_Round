@@ -406,7 +406,7 @@ export default function EditorPage() {
                             <Music className="w-6 h-6 text-gray-700" />
                           </div>
                         )}
-                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent p-1.5 opacity-0 group-hover:opacity-100 transition-opacity flex justify-between items-end">
+                        <div className="absolute inset-x-0 bottom-0 bg-black/80 p-1.5 opacity-0 group-hover:opacity-100 transition-opacity flex justify-between items-end">
                           <p className="text-[10px] truncate max-w-[80%]">{asset.filename}</p>
                           <button 
                             onClick={() => handleAddAssetToTimeline(asset)}
