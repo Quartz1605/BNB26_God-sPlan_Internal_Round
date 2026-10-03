@@ -44,13 +44,10 @@ def get_db():
 async def create_project(project: ProjectCreate, user: dict = Depends(get_current_user)):
     db = get_db()
     
-    new_project = {
-        "user_id": str(user["_id"]),
-        "name": project.name,
-        "description": project.description,
-        "created_at": datetime.now(timezone.utc),
-        "updated_at": datetime.now(timezone.utc)
-    }
+    new_project = project.dict()
+    new_project["user_id"] = str(user["_id"])
+    new_project["created_at"] = datetime.now(timezone.utc)
+    new_project["updated_at"] = datetime.now(timezone.utc)
     
     result = await db.projects.insert_one(new_project)
     new_project["_id"] = str(result.inserted_id)
@@ -402,3 +399,95 @@ async def process_ai_command(
     except Exception as e:
         print(f"AI Command Error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to process AI command")
+
+@router.post("/generate-plan")
+async def generate_plan(
+    payload: dict = Body(...),
+    user: dict = Depends(get_current_user)
+):
+    prompt = payload.get("prompt")
+    platform = payload.get("platform", "YouTube")
+    duration = payload.get("duration", "5 min")
+    tone = payload.get("tone", "Educational")
+    audience = payload.get("audience", "Beginners")
+    
+    if not prompt:
+        raise HTTPException(status_code=400, detail="Prompt is required")
+        
+    openrouter_api_key = os.environ.get("OPENROUTER_API_KEY")
+    if not openrouter_api_key:
+        raise HTTPException(status_code=500, detail="OpenRouter API key not configured")
+        
+    system_prompt = f"""
+    You are an expert AI video producer for CreatorAI.
+    Your task is to take a user's idea and generate a complete Content Plan structured as JSON.
+    
+    Settings:
+    - Platform: {platform}
+    - Duration: {duration}
+    - Tone: {tone}
+    - Audience: {audience}
+    
+    Return EXACTLY a JSON object with this structure:
+    {{
+      "titleOptions": ["title 1", "title 2", "title 3"],
+      "hookOptions": ["hook 1", "hook 2", "hook 3"],
+      "objective": "short sentence about the video objective",
+      "targetAudience": "{audience}",
+      "outline": ["Intro", "Problem", "Concept", "Outro"],
+      "script": "The full spoken script here...",
+      "timeline": [
+        {{
+          "id": "intro",
+          "start": 0,
+          "end": 20,
+          "title": "Hook",
+          "purpose": "Grab attention",
+          "script": "spoken text for this section",
+          "visuals": ["visual suggestion 1", "visual suggestion 2"]
+        }}
+      ],
+      "visualSuggestions": ["B-roll idea 1", "B-roll idea 2"],
+      "cta": "Call to action text",
+      "thumbnailPrompt": "Prompt to generate a thumbnail image"
+    }}
+    
+    IMPORTANT: Make sure the timeline start and end times roughly match the requested duration.
+    """
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            model_name = os.environ.get("AI_MODEL", "google/gemini-2.5-flash-lite")
+            response = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {openrouter_api_key}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "http://localhost:3000",
+                    "X-Title": "CreatorAI"
+                },
+                json={
+                    "model": model_name,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": f"Idea: {prompt}"}
+                    ],
+                    "response_format": {"type": "json_object"}
+                },
+                timeout=30.0
+            )
+            
+            response.raise_for_status()
+            data = response.json()
+            content = data["choices"][0]["message"]["content"]
+            
+            if content.startswith("```json"):
+                content = content[7:-3]
+            elif content.startswith("```"):
+                content = content[3:-3]
+                
+            return json.loads(content)
+            
+    except Exception as e:
+        print(f"Plan Generation Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to generate plan")

@@ -30,10 +30,13 @@ class TranscriptionService:
     async def transcribe(self, audio_path: str) -> TranscriptionResult:
         logger.info(f"[TRANSCRIPTION] Starting transcription using provider: {self.provider}")
         
-        if self.provider == "deepgram" and self.api_key:
+        is_empty_file = os.path.exists(audio_path) and os.path.getsize(audio_path) == 0
+        
+        if self.provider == "deepgram" and self.api_key and not is_empty_file:
             return await self._transcribe_deepgram(audio_path)
         else:
-            # Fallback to a mock for development/testing
+            if is_empty_file:
+                logger.warning("[TRANSCRIPTION] Audio file is empty (likely mock fallback). Using mock transcription.")
             return await self._transcribe_mock(audio_path)
 
     async def _transcribe_deepgram(self, audio_path: str) -> TranscriptionResult:

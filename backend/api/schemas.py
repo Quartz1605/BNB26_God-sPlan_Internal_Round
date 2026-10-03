@@ -21,6 +21,16 @@ class PyObjectId(str):
 class ProjectBase(BaseModel):
     name: str
     description: Optional[str] = None
+    platform: Optional[str] = None
+    audience: Optional[str] = None
+    duration: Optional[str] = None
+    hook: Optional[str] = None
+    script: Optional[str] = None
+    sections: Optional[List[dict]] = None
+    visualPlan: Optional[List[str]] = None
+    cta: Optional[str] = None
+    thumbnailPrompt: Optional[str] = None
+    thumbnailUrl: Optional[str] = None
 
 class ProjectCreate(ProjectBase):
     pass
