@@ -1,4 +1,5 @@
 import os
+import botocore
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from bson import ObjectId
@@ -18,10 +19,17 @@ router = APIRouter(prefix="/projects", tags=["projects"])
 
 # Configure S3 client
 s3_client = boto3.client(
-    's3',
-    aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
-    aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY'),
-    region_name=os.environ.get('AWS_REGION', 'eu-north-1')
+    "s3",
+    aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"].strip(),
+    aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"].strip(),
+    region_name="eu-north-1",
+    endpoint_url="https://s3.eu-north-1.amazonaws.com",
+    config=botocore.client.Config(
+        signature_version="s3v4",
+        s3={
+            "addressing_style": "virtual"
+        }
+    )
 )
 AWS_BUCKET_NAME = os.environ.get('AWS_BUCKET_NAME', 'godsplan-creatorai')
 
