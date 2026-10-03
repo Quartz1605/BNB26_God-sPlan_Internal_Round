@@ -233,37 +233,86 @@ async def export_project(
     state = project.get("state", {})
     clips = state.get("clips", [])
     
-    # 2. Sort clips by timeline position (as requested by architecture)
+    # 2. Sort clips by timeline position
     clips.sort(key=lambda c: c.get("startTime", 0))
     
-    # Mock Export: For this hackathon, we will grab the first valid video from the actual timeline
-    # rather than just the first asset uploaded.
-    for clip in clips:
-        if clip.get("type") in ["video", "image"] and clip.get("assetId"):
-            asset = await db.assets.find_one({"_id": ObjectId(clip["assetId"])})
-            if asset:
-                source_key = f"creatorai/{user['_id']}/{project_id}/{asset['filename']}"
-                break
-            
-    if not source_key:
-        import tempfile
-        import os
-        with tempfile.NamedTemporaryFile(mode='w', delete=False) as tmp:
-            tmp.write(f"Timeline EDL for project {project_id}:\n{clips}")
-            tmp_path = tmp.name
+    import tempfile
+    import os
+    import subprocess
+    import urllib.request
+    
+    with tempfile.TemporaryDirectory() as temp_dir:
+        concat_file_path = os.path.join(temp_dir, "concat.txt")
+        output_file_path = os.path.join(temp_dir, "output.mp4")
         
-        export_key = f"creatorai/exports/{user['_id']}/{project_id}/export_data.txt"
-        s3_client.upload_file(tmp_path, AWS_BUCKET_NAME, export_key)
-        os.remove(tmp_path)
-    else:
+        valid_clips = []
+        # Gather all video clips and their assets
+        for clip in clips:
+            if clip.get("type") == "video" and clip.get("assetId"):
+                asset = await db.assets.find_one({"_id": ObjectId(clip["assetId"])})
+                if asset:
+                    valid_clips.append((clip, asset))
+                    
+        if not valid_clips:
+            raise HTTPException(status_code=400, detail="No video clips found in timeline to export.")
+            
+        with open(concat_file_path, "w") as f:
+            for idx, (clip, asset) in enumerate(valid_clips):
+                source_key = f"creatorai/{user['_id']}/{project_id}/{asset['filename']}"
+                local_video_path = os.path.join(temp_dir, f"video_{idx}.mp4")
+                
+                # Download file from S3 to temp directory
+                try:
+                    s3_client.download_file(AWS_BUCKET_NAME, source_key, local_video_path)
+                    
+                    # Write to concat file
+                    # Ensure path format is ffmpeg-friendly (forward slashes)
+                    safe_path = local_video_path.replace('\\', '/')
+                    f.write(f"file '{safe_path}'\n")
+                    
+                    # Apply trimming if specified
+                    if "sourceStart" in clip and clip["sourceStart"] > 0:
+                        f.write(f"inpoint {clip['sourceStart']}\n")
+                    if "sourceEnd" in clip and clip["sourceEnd"] > 0:
+                        f.write(f"outpoint {clip['sourceEnd']}\n")
+                        
+                except Exception as e:
+                    print(f"Failed to download asset {asset['filename']}: {e}")
+                    
+        # Run FFmpeg to concatenate
         try:
-            s3_client.copy_object(
-                Bucket=AWS_BUCKET_NAME,
-                CopySource={'Bucket': AWS_BUCKET_NAME, 'Key': source_key},
-                Key=export_key
-            )
+            # We use re-encoding to ensure different formats/codecs merge properly
+            # and to prepare for future text overlays
+            cmd = [
+                "ffmpeg", "-y",
+                "-f", "concat",
+                "-safe", "0",
+                "-i", concat_file_path,
+                "-c:v", "libx264",
+                "-preset", "fast",
+                "-c:a", "aac",
+                output_file_path
+            ]
+            subprocess.run(cmd, check=True, capture_output=True)
+            
+            # Upload the final stitched video to S3
+            s3_client.upload_file(output_file_path, AWS_BUCKET_NAME, export_key)
+            
+        except subprocess.CalledProcessError as e:
+            print("FFmpeg Error Output:", e.stderr.decode())
+            # Fallback if FFmpeg fails: Just copy the first video in S3 like before
+            if valid_clips:
+                clip, asset = valid_clips[0]
+                source_key = f"creatorai/{user['_id']}/{project_id}/{asset['filename']}"
+                s3_client.copy_object(
+                    Bucket=AWS_BUCKET_NAME,
+                    CopySource={'Bucket': AWS_BUCKET_NAME, 'Key': source_key},
+                    Key=export_key
+                )
+            else:
+                raise HTTPException(status_code=500, detail="Failed to render export.")
         except Exception as e:
-            print("Failed to copy object in S3 for export:", e)
+            print("Export Pipeline Error:", e)
             raise HTTPException(status_code=500, detail="Failed to render export.")
 
     # Generate presigned URL for the exported file

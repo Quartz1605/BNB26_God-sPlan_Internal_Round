@@ -52,7 +52,7 @@ export function Canvas() {
           ) : (
             activeClips.map((clip) => {
               const scale = clip.scale || 1;
-              const opacity = clip.opacity ?? 1;
+              let opacity = clip.opacity ?? 1;
               const posX = clip.position?.x ?? 50;
               const posY = clip.position?.y ?? 50;
               
@@ -71,6 +71,24 @@ export function Canvas() {
                   filterString += "contrast(1.2) saturate(1.5) hue-rotate(-10deg) ";
                 }
 
+                // Apply Transitions
+                const progressIn = playhead - clip.startTime;
+                
+                if (clip.effects?.includes("transitionIn:fade")) {
+                  if (progressIn < 1.0) {
+                    opacity *= (progressIn / 1.0);
+                  }
+                }
+                
+                let translateX = "-50%";
+                if (clip.effects?.includes("transitionIn:slideRight")) {
+                  if (progressIn < 1.0) {
+                    // Slide from left edge (0%) to center (50%)
+                    const easeOutQuad = 1 - (1 - progressIn) * (1 - progressIn);
+                    translateX = `calc(-50% - ${100 * (1 - easeOutQuad)}%)`;
+                  }
+                }
+
                 return (
                   <div 
                     key={clip.id}
@@ -78,7 +96,7 @@ export function Canvas() {
                     style={{
                       left: `${posX}%`,
                       top: `${posY}%`,
-                      transform: `translate(-50%, -50%) scale(${scale})`,
+                      transform: `translate(${translateX}, -50%) scale(${scale})`,
                       opacity: opacity,
                       width: '100%',
                       height: '100%',
@@ -88,12 +106,11 @@ export function Canvas() {
                     }}
                   >
                     {clip.type === 'video' ? (
-                      <video 
-                        src={clip.fileUrl} 
-                        className={customClasses}
-                        style={{ filter: filterString }}
-                        preload="metadata"
-                        onLoadedMetadata={(e) => { e.currentTarget.currentTime = 0; }}
+                      <SyncVideo 
+                        clip={clip}
+                        playhead={playhead}
+                        customClasses={customClasses}
+                        filterString={filterString}
                       />
                     ) : (
                       <img 
@@ -121,6 +138,7 @@ export function Canvas() {
                       color: clip.color || '#ffffff',
                       textShadow: '0px 2px 4px rgba(0,0,0,0.5)',
                       fontWeight: 'bold',
+                      zIndex: 10
                     }}
                   >
                     {clip.textContent || "Double click to edit text"}
@@ -139,5 +157,36 @@ export function Canvas() {
         </div>
       </div>
     </div>
+  );
+}
+
+// Helper component to sync video currentTime with the editor playhead
+function SyncVideo({ clip, playhead, customClasses, filterString }: any) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (videoRef.current) {
+      // Calculate where we should be in the source video
+      const sourceTime = (playhead - clip.startTime) + (clip.sourceStart || 0);
+      
+      // If difference is large (seeking), update it immediately
+      // If difference is small (playing), browsers handle playback better if we don't constantly set currentTime
+      // But for a simple timeline, syncing every frame guarantees accuracy.
+      if (Math.abs(videoRef.current.currentTime - sourceTime) > 0.1) {
+        videoRef.current.currentTime = sourceTime;
+      }
+    }
+  }, [playhead, clip]);
+
+  return (
+    <video 
+      ref={videoRef}
+      src={clip.fileUrl} 
+      className={customClasses}
+      style={{ filter: filterString }}
+      preload="auto"
+      muted
+      playsInline
+    />
   );
 }

@@ -3,114 +3,165 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, Sparkles, Settings2, ChevronDown, ChevronUp } from "lucide-react";
 
 export default function CreateProjectPage() {
   const router = useRouter();
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState("");
+  const [prompt, setPrompt] = useState("");
+  const [showSettings, setShowSettings] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  
+  // Optional settings
+  const [platform, setPlatform] = useState("YouTube");
+  const [duration, setDuration] = useState("5 min");
+  const [tone, setTone] = useState("Educational");
+  const [audience, setAudience] = useState("Beginners");
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const examplePrompts = [
+    "Explain AI agents to beginners",
+    "Create a video about my startup",
+    "Make a 10-minute tutorial on RAG",
+    "Tell the story of how I built my app"
+  ];
+
+  const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!prompt.trim()) return;
 
-    setIsSubmitting(true);
-    setError("");
-
-    try {
-      const res = await fetch("http://localhost:8000/projects", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ name, description }),
-      });
-
-      if (!res.ok) {
-        throw new Error("Failed to create project");
-      }
-
-      const project = await res.json();
-      router.push(`/dashboard/projects/${project._id}`);
-    } catch (err) {
-      setError("Failed to create project. Please try again.");
-      setIsSubmitting(false);
-    }
+    setIsGenerating(true);
+    // Phase 1: Just simulate a loading state for now
+    setTimeout(() => {
+      setIsGenerating(false);
+      alert("Phase 1 complete! Phase 2 will implement Gemini integration here.");
+    }, 1500);
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-8 animate-in fade-in duration-500">
-      <div className="flex items-center gap-4">
+    <div className="max-w-4xl mx-auto space-y-12 animate-in fade-in duration-700 py-12 flex flex-col items-center">
+      {/* Header */}
+      <div className="text-center space-y-3 relative w-full">
         <Link 
           href="/dashboard" 
-          className="p-2 -ml-2 rounded-full hover:bg-gray-100 text-gray-500 transition-colors"
+          className="absolute left-0 top-1/2 -translate-y-1/2 p-2 rounded-full hover:bg-gray-100 text-gray-500 transition-colors"
         >
           <ArrowLeft className="w-5 h-5" />
         </Link>
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Create New Project</h1>
-          <p className="text-sm text-gray-500 mt-1">Start a new content creation workflow.</p>
-        </div>
+        <h1 className="text-4xl font-bold tracking-tight text-gray-900 flex items-center justify-center gap-3">
+          CreatorAI <Sparkles className="w-6 h-6 text-[#a91d22]" />
+        </h1>
+        <p className="text-lg text-gray-500 font-medium">
+          Turn your idea into a complete content plan.
+        </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 space-y-6">
-        {error && (
-          <div className="p-4 rounded-xl bg-red-50 text-sm text-red-600 border border-red-100">
-            {error}
+      {/* Main Form */}
+      <form onSubmit={handleGenerate} className="w-full max-w-3xl space-y-8">
+        <div className="relative group">
+          <div className="absolute -inset-1 bg-gradient-to-r from-[#a91d22]/20 to-red-400/20 rounded-[32px] blur-xl opacity-50 group-hover:opacity-100 transition duration-1000 group-hover:duration-200" />
+          
+          <div className="relative bg-white rounded-3xl shadow-xl shadow-gray-200/50 border border-gray-100 p-8 flex flex-col items-center gap-6">
+            <h2 className="text-xl font-semibold text-gray-800 self-start">What do you want to create?</h2>
+            
+            <textarea
+              rows={5}
+              required
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder='"I want to make a video explaining how MCP works and why developers should care about it..."'
+              className="w-full bg-gray-50/50 hover:bg-gray-50 focus:bg-white text-lg rounded-2xl border border-gray-200 focus:border-[#a91d22] focus:ring-4 focus:ring-[#a91d22]/10 p-6 resize-none transition-all placeholder:text-gray-400 text-gray-800"
+            />
+            
+            {/* Example Prompts */}
+            <div className="w-full">
+              <div className="flex flex-wrap gap-2">
+                {examplePrompts.map((ep, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setPrompt(ep)}
+                    className="text-sm px-4 py-2 rounded-full border border-gray-200 bg-white text-gray-600 hover:border-[#a91d22]/40 hover:bg-red-50 hover:text-[#a91d22] transition-colors"
+                  >
+                    {ep}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Optional Settings Toggle */}
+            <div className="w-full pt-4 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setShowSettings(!showSettings)}
+                className="flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-900 transition-colors"
+              >
+                <Settings2 className="w-4 h-4" />
+                Customize (Optional)
+                {showSettings ? <ChevronUp className="w-4 h-4 ml-1" /> : <ChevronDown className="w-4 h-4 ml-1" />}
+              </button>
+              
+              {/* Optional Settings Panel */}
+              {showSettings && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 animate-in slide-in-from-top-4 fade-in duration-300">
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Platform</label>
+                    <select value={platform} onChange={e => setPlatform(e.target.value)} className="w-full p-2.5 rounded-xl border border-gray-200 text-sm bg-gray-50 focus:ring-2 focus:ring-[#a91d22]/20 focus:border-[#a91d22] outline-none">
+                      <option>YouTube</option>
+                      <option>YouTube Shorts</option>
+                      <option>Instagram Reels</option>
+                      <option>TikTok</option>
+                      <option>LinkedIn</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Duration</label>
+                    <select value={duration} onChange={e => setDuration(e.target.value)} className="w-full p-2.5 rounded-xl border border-gray-200 text-sm bg-gray-50 focus:ring-2 focus:ring-[#a91d22]/20 focus:border-[#a91d22] outline-none">
+                      <option>30 sec</option>
+                      <option>60 sec</option>
+                      <option>3 min</option>
+                      <option>5 min</option>
+                      <option>10 min</option>
+                      <option>Custom</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Tone</label>
+                    <select value={tone} onChange={e => setTone(e.target.value)} className="w-full p-2.5 rounded-xl border border-gray-200 text-sm bg-gray-50 focus:ring-2 focus:ring-[#a91d22]/20 focus:border-[#a91d22] outline-none">
+                      <option>Educational</option>
+                      <option>Storytelling</option>
+                      <option>Professional</option>
+                      <option>Energetic</option>
+                      <option>Casual</option>
+                      <option>Cinematic</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Audience</label>
+                    <select value={audience} onChange={e => setAudience(e.target.value)} className="w-full p-2.5 rounded-xl border border-gray-200 text-sm bg-gray-50 focus:ring-2 focus:ring-[#a91d22]/20 focus:border-[#a91d22] outline-none">
+                      <option>Beginners</option>
+                      <option>Developers</option>
+                      <option>Professionals</option>
+                      <option>General audience</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <button
+              type="submit"
+              disabled={!prompt.trim() || isGenerating}
+              className="w-full mt-4 flex items-center justify-center gap-3 px-8 py-4 rounded-2xl bg-[#a91d22] hover:bg-[#c7262c] text-white font-semibold text-lg shadow-xl shadow-red-900/20 hover:shadow-2xl hover:shadow-red-900/40 hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:translate-y-0 disabled:pointer-events-none"
+            >
+              {isGenerating ? (
+                <>
+                  <Loader2 className="w-6 h-6 animate-spin" />
+                  Generating Plan...
+                </>
+              ) : (
+                "Generate Content Plan"
+              )}
+            </button>
           </div>
-        )}
-        
-        <div className="space-y-2">
-          <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-            Project Name <span className="text-red-500">*</span>
-          </label>
-          <input
-            id="name"
-            type="text"
-            required
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#a91d22]/20 focus:border-[#a91d22] transition-all bg-gray-50/50 hover:bg-white"
-            placeholder="e.g. My Next Youtube Video"
-          />
-        </div>
-
-        <div className="space-y-2">
-          <label htmlFor="description" className="block text-sm font-medium text-gray-700">
-            Description
-          </label>
-          <textarea
-            id="description"
-            rows={4}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#a91d22]/20 focus:border-[#a91d22] transition-all resize-none bg-gray-50/50 hover:bg-white"
-            placeholder="Optional project description..."
-          />
-        </div>
-
-        <div className="pt-4 border-t border-gray-100 flex justify-end gap-3">
-          <Link
-            href="/dashboard"
-            className="px-5 py-2.5 rounded-xl text-gray-600 font-medium hover:bg-gray-50 transition-colors"
-          >
-            Cancel
-          </Link>
-          <button
-            type="submit"
-            disabled={!name.trim() || isSubmitting}
-            className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-[#a91d22] to-[#c7262c] text-white font-medium shadow-lg shadow-red-900/20 hover:shadow-xl hover:shadow-red-900/30 transition-all disabled:opacity-50 disabled:pointer-events-none"
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                Creating...
-              </>
-            ) : (
-              "Create Project"
-            )}
-          </button>
         </div>
       </form>
     </div>
