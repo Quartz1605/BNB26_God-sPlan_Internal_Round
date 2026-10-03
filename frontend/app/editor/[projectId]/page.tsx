@@ -143,20 +143,57 @@ export default function EditorPage() {
   const handleAddAssetToTimeline = (asset: Asset) => {
     // Determine track based on asset type
     const isAudio = asset.asset_type.startsWith('audio');
+    const isVideo = asset.asset_type.startsWith('video');
     const track = tracks.find(t => isAudio ? t.type === 'audio' : t.type === 'video');
     
     if (track) {
-      addClip({
-        assetId: asset._id,
-        trackId: track.id,
-        startTime: playhead, // Insert at playhead
-        duration: 5, // Default duration, ideally we read metadata
-        sourceStart: 0,
-        sourceEnd: 5,
-        name: asset.filename,
-        type: isAudio ? 'audio' : (asset.asset_type.startsWith('image') ? 'image' : 'video') as any,
-        fileUrl: asset.file_url
-      });
+      if (isVideo || isAudio) {
+        // Fetch actual duration dynamically before adding to timeline
+        const mediaElement = isVideo ? document.createElement('video') : document.createElement('audio');
+        mediaElement.preload = 'metadata';
+        mediaElement.onloadedmetadata = () => {
+          const duration = mediaElement.duration && isFinite(mediaElement.duration) ? mediaElement.duration : 5;
+          addClip({
+            assetId: asset._id,
+            trackId: track.id,
+            startTime: playhead,
+            duration: duration,
+            sourceStart: 0,
+            sourceEnd: duration,
+            name: asset.filename,
+            type: isAudio ? 'audio' : 'video',
+            fileUrl: asset.file_url
+          });
+        };
+        mediaElement.onerror = () => {
+          // Fallback if metadata fails to load
+          addClip({
+            assetId: asset._id,
+            trackId: track.id,
+            startTime: playhead,
+            duration: 5,
+            sourceStart: 0,
+            sourceEnd: 5,
+            name: asset.filename,
+            type: isAudio ? 'audio' : 'video',
+            fileUrl: asset.file_url
+          });
+        };
+        mediaElement.src = asset.file_url;
+      } else {
+        // For images or unknown types, fallback to 5 seconds
+        addClip({
+          assetId: asset._id,
+          trackId: track.id,
+          startTime: playhead,
+          duration: 5,
+          sourceStart: 0,
+          sourceEnd: 5,
+          name: asset.filename,
+          type: 'image',
+          fileUrl: asset.file_url
+        });
+      }
     }
   };
 

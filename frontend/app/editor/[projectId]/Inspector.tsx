@@ -98,9 +98,65 @@ export function Inspector() {
           </div>
         )}
 
-        {(clip.type === 'video' || clip.type === 'text') && (
+        {(clip.type === 'video' || clip.type === 'text' || clip.type === 'image') && (
           <>
             {clip.type === 'text' && <hr className="border-gray-800" />}
+            
+            {/* Cropping / Trimming */}
+            <div className="space-y-4">
+              <h3 className="text-xs font-semibold text-gray-400 uppercase">Trim & Crop</h3>
+              
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs text-gray-400 block">Source Start (s)</label>
+                  <input 
+                    type="number" step="0.1"
+                    className="w-full bg-[#1c1c1c] border border-gray-700 rounded p-1.5 text-sm text-white focus:outline-none focus:border-[#a91d22]"
+                    value={clip.sourceStart.toFixed(1)}
+                    onChange={(e) => handleUpdate({ sourceStart: Math.max(0, Number(e.target.value)) })}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-gray-400 block">Duration (s)</label>
+                  <input 
+                    type="number" step="0.1"
+                    className="w-full bg-[#1c1c1c] border border-gray-700 rounded p-1.5 text-sm text-white focus:outline-none focus:border-[#a91d22]"
+                    value={clip.duration.toFixed(1)}
+                    onChange={(e) => {
+                      const dur = Math.max(0.5, Number(e.target.value));
+                      handleUpdate({ duration: dur, sourceEnd: clip.sourceStart + dur });
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <hr className="border-gray-800" />
+
+            {/* Transitions */}
+            <div className="space-y-4">
+              <h3 className="text-xs font-semibold text-gray-400 uppercase">Transitions</h3>
+              
+              <div className="space-y-2">
+                <label className="text-xs text-gray-400 block">Transition In</label>
+                <select 
+                  className="w-full bg-[#1c1c1c] border border-gray-700 rounded p-1.5 text-sm text-white focus:outline-none focus:border-[#a91d22]"
+                  value={clip.effects?.find(e => e.startsWith('transitionIn:'))?.split(':')[1] || 'none'}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    const otherFx = (clip.effects || []).filter(fx => !fx.startsWith('transitionIn:'));
+                    if (val !== 'none') otherFx.push(`transitionIn:${val}`);
+                    handleUpdate({ effects: otherFx });
+                  }}
+                >
+                  <option value="none">None</option>
+                  <option value="fade">Fade In (1s)</option>
+                  <option value="slideRight">Slide In Right (1s)</option>
+                </select>
+              </div>
+            </div>
+
+            <hr className="border-gray-800" />
             
             {/* Transform Properties */}
             <div className="space-y-4">
