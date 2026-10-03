@@ -6,9 +6,18 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import logging
+
+# Configure logging for CreatorAI services
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s"
+)
+
 from database import client
 from auth.router import router as auth_router
 from api.projects import router as projects_router
+from api.video_analysis import router as video_analysis_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -31,6 +40,7 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(projects_router)
+app.include_router(video_analysis_router)
 
 @app.get("/")
 async def root():

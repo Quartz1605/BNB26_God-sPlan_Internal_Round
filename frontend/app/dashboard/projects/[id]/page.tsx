@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, use } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Upload, FileText, Image as ImageIcon, Video, Music, Trash2, X, Loader2, Play } from "lucide-react";
+import { ArrowLeft, Upload, FileText, Image as ImageIcon, Video, Music, Trash2, X, Loader2, Play, Sparkles } from "lucide-react";
 
 interface Project {
   _id: string;
@@ -245,6 +245,15 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     </span>
                     <span>{formatSize(asset.file_size)}</span>
                   </div>
+                  {asset.asset_type.startsWith('video/') && (
+                    <Link
+                      href={`/dashboard/projects/${projectId}/assets/${asset._id}`}
+                      className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-gradient-to-r from-[#a91d22] to-[#c7262c] text-white text-xs font-medium shadow-md shadow-red-900/20 hover:shadow-lg hover:shadow-red-900/30 transition-all"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      AI Analyze & Clip
+                    </Link>
+                  )}
                 </div>
               </div>
             ))}

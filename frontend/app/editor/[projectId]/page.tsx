@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -13,12 +13,27 @@ import { Canvas } from "./Canvas";
 import { Inspector } from "./Inspector";
 import { AiAssistantPanel } from "./AiAssistantPanel";
 
+
 interface Asset {
   _id: string;
   filename: string;
   file_url: string;
   asset_type: string;
   file_size: number;
+}
+
+const API_BASE = "http://localhost:8000";
+
+function formatTime(seconds: number): string {
+  if (isNaN(seconds) || seconds < 0) return "00:00:00.0";
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  const ms = Math.floor((seconds % 1) * 10);
+  if (h > 0) {
+    return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}.${ms}`;
+  }
+  return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}.${ms}`;
 }
 
 export default function EditorPage() {
@@ -315,7 +330,7 @@ export default function EditorPage() {
 
       {/* Main Workspace */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left Sidebar (Tools/Tabs) */}
+        {/* Left Sidebar */}
         <aside className="w-16 border-r border-gray-800 flex flex-col items-center py-4 gap-4 shrink-0 bg-[#141414]">
           <button
             onClick={() => setActiveTab("media")}
@@ -358,7 +373,7 @@ export default function EditorPage() {
           </button>
         </aside>
 
-        {/* Panel Content (Media Library) */}
+        {/* Media Library */}
         <div className="w-72 border-r border-gray-800 flex flex-col bg-[#111111] shrink-0">
           <div className="p-4 border-b border-gray-800 flex items-center justify-between">
             <h2 className="text-sm font-medium uppercase tracking-wide">
@@ -367,19 +382,13 @@ export default function EditorPage() {
               {activeTab === "effects" && "Effects"}
               {activeTab === "ai" && "CreatorAI Assistant"}
             </h2>
-            {activeTab === "media" && (
-              <button className="p-1 hover:bg-gray-800 rounded-md text-gray-400 hover:text-white transition-colors">
-                <Upload className="w-4 h-4" />
-              </button>
-            )}
           </div>
           <div className="flex-1 overflow-y-auto p-3">
             {activeTab === "media" && (
               <div className="space-y-3">
                 {assets.length === 0 ? (
                   <div className="text-center py-10 px-4 border border-dashed border-gray-800 rounded-lg">
-                    <p className="text-xs text-gray-500 mb-2">No assets uploaded yet</p>
-                    <button className="text-xs text-[#a91d22] hover:text-[#c7262c]">Upload your first file</button>
+                    <p className="text-xs text-gray-500">No assets uploaded yet</p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-2">
@@ -438,7 +447,7 @@ export default function EditorPage() {
           </div>
         </div>
 
-        {/* Center Canvas / Preview */}
+        {/* Center Canvas */}
         <div className="flex-1 flex flex-col min-w-0 bg-black relative">
           <Canvas />
           
@@ -450,11 +459,7 @@ export default function EditorPage() {
             >
               <SkipBack className="w-4 h-4 fill-current" />
             </button>
-            
-            <button 
-              onClick={() => setIsPlaying(!isPlaying)}
-              className="p-2 hover:bg-gray-700 bg-gray-800 rounded-full transition-colors text-white"
-            >
+            <button onClick={() => setIsPlaying(!isPlaying)} className="p-2 bg-gray-800 hover:bg-gray-700 rounded-full text-white">
               {isPlaying ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current translate-x-[1px]" />}
             </button>
             
