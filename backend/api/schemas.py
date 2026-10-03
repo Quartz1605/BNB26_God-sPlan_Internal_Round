@@ -47,3 +47,50 @@ class AssetResponse(BaseModel):
     
     class Config:
         populate_by_name = True
+
+class CreatorDNARequest(BaseModel):
+    asset_ids: List[str]
+
+class CreatorDNAResponse(BaseModel):
+    id: str = Field(alias="_id")
+    user_id: str
+    version: int
+    status: str
+    source_asset_ids: List[str]
+    identity: dict
+    communication: dict
+    hooks: dict
+    storytelling: dict
+    pacing: dict
+    engagement: dict
+    content_patterns: dict
+    strengths: List[str]
+    content_gaps: List[str]
+    representative_examples: List[dict]
+    analysis_metadata: dict
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        populate_by_name = True
+
+class ContentOpportunity(BaseModel):
+    title: str
+    concept: str
+    why_this_fits: str
+    creator_dna_match: float
+    supporting_patterns: List[str]
+    suggested_hook: str
+    suggested_format: str
+    target_topic: str
+    confidence: float
+
+class ContentOpportunitiesResponse(BaseModel):
+    id: str = Field(alias="_id")
+    user_id: str
+    status: str
+    opportunities: List[ContentOpportunity]
+    generated_at: datetime
+    
+    class Config:
+        populate_by_name = True

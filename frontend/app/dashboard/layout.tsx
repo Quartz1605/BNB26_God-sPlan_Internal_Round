@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
-import { LayoutDashboard, FolderKanban, FileVideo, Settings, LogOut } from "lucide-react";
+import { LayoutDashboard, FolderKanban, FileVideo, Settings, LogOut, Fingerprint, Sparkles } from "lucide-react";
 
 export default function DashboardLayout({
   children,
@@ -55,6 +55,8 @@ export default function DashboardLayout({
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { name: "Projects", href: "/dashboard/projects", icon: FolderKanban },
     { name: "Assets", href: "/dashboard/assets", icon: FileVideo },
+    { name: "Creator DNA", href: "/dashboard/creator-dna", icon: Fingerprint },
+    { name: "Opportunities", href: "/dashboard/opportunities", icon: Sparkles },
     { name: "Settings", href: "/dashboard/settings", icon: Settings },
   ];
 

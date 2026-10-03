@@ -18,6 +18,7 @@ from database import client
 from auth.router import router as auth_router
 from api.projects import router as projects_router
 from api.video_analysis import router as video_analysis_router
+from api.creator_dna import router as creator_dna_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -41,6 +42,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(projects_router)
 app.include_router(video_analysis_router)
+app.include_router(creator_dna_router)
 
 @app.get("/")
 async def root():
