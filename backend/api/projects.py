@@ -230,6 +230,8 @@ async def export_project(
     # In a full FFmpeg implementation, we would construct an EDL (Edit Decision List) here.
     state = project.get("state", {})
     clips = state.get("clips", [])
+    settings = state.get("settings", {})
+    captions_enabled = settings.get("captions", {}).get("enabled", False)
     
     # 2. Sort clips by timeline position
     clips.sort(key=lambda c: c.get("startTime", 0))
@@ -277,6 +279,40 @@ async def export_project(
                 except Exception as e:
                     print(f"Failed to download asset {asset['filename']}: {e}")
                     
+        subtitle_path = None
+        if captions_enabled:
+            from api.subtitle_service import generate_srt
+            all_segments = []
+            current_time = 0.0
+            
+            for idx, (clip, asset) in enumerate(valid_clips):
+                source_start = clip.get("sourceStart", 0)
+                source_end = clip.get("sourceEnd", 0)
+                duration = clip.get("duration", source_end - source_start)
+                
+                segments = asset.get("analysis", {}).get("transcript_segments", [])
+                for seg in segments:
+                    seg_start = seg.get("start", 0)
+                    seg_end = seg.get("end", 0)
+                    
+                    if seg_end > source_start and seg_start < source_end:
+                        adj_start = max(0.0, seg_start - source_start)
+                        adj_end = min(duration, seg_end - source_start)
+                        
+                        all_segments.append({
+                            "start": current_time + adj_start,
+                            "end": current_time + adj_end,
+                            "text": seg.get("text", "")
+                        })
+                current_time += duration
+                
+            if all_segments:
+                srt_content = generate_srt(all_segments)
+                subtitle_path = os.path.join(temp_dir, "export_subs.srt")
+                with open(subtitle_path, "w", encoding="utf-8") as f:
+                    f.write(srt_content)
+
+                    
         # Run FFmpeg to concatenate
         try:
             # We use re-encoding to ensure different formats/codecs merge properly
@@ -285,12 +321,22 @@ async def export_project(
                 "ffmpeg", "-y",
                 "-f", "concat",
                 "-safe", "0",
-                "-i", concat_file_path,
+                "-i", concat_file_path
+            ]
+            
+            if subtitle_path:
+                import platform
+                escaped_sub = subtitle_path
+                if platform.system() == "Windows":
+                    escaped_sub = escaped_sub.replace("\\", "/").replace(":", "\\:")
+                cmd.extend(["-vf", f"subtitles='{escaped_sub}'"])
+                
+            cmd.extend([
                 "-c:v", "libx264",
                 "-preset", "fast",
                 "-c:a", "aac",
                 output_file_path
-            ]
+            ])
             subprocess.run(cmd, check=True, capture_output=True)
             
             # Upload the final stitched video to S3

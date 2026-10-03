@@ -67,12 +67,20 @@ interface ClipCandidate {
   status: string;
 }
 
+interface Chapter {
+  title: string;
+  start: number;
+  end: number;
+  summary: string;
+}
+
 interface AnalysisResult {
   status: string;
   progress: number;
   step: string;
   video_summary: string;
   topics: string[];
+  chapters?: Chapter[];
   clip_candidates: ClipCandidate[];
   video_metadata: Record<string, any>;
   error?: string;
@@ -166,11 +174,13 @@ function AnalysisProgress({ currentStep, progress }: { currentStep: string; prog
 
 function ClipPreview({
   videoUrl,
+  subtitlesUrl,
   start,
   end,
   onClose,
 }: {
   videoUrl: string;
+  subtitlesUrl?: string | null;
   start: number;
   end: number;
   onClose: () => void;
@@ -239,7 +249,12 @@ function ClipPreview({
             className="w-full h-full object-contain"
             muted={isMuted}
             playsInline
-          />
+            crossOrigin="anonymous"
+          >
+            {subtitlesUrl && (
+              <track kind="captions" src={subtitlesUrl} srcLang="en" label="English" default />
+            )}
+          </video>
         </div>
 
         {/* Controls */}
@@ -401,6 +416,7 @@ export default function AssetDetailPage({
   const [asset, setAsset] = useState<Asset | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [videoUrl, setVideoUrl] = useState<string>("");
+  const [subtitlesUrl, setSubtitlesUrl] = useState<string | null>(null);
   const [generatedClips, setGeneratedClips] = useState<GeneratedClip[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -436,6 +452,21 @@ export default function AssetDetailPage({
         } else {
           setIsAnalyzing(false);
         }
+      }
+
+      // Fetch subtitles
+      try {
+        const subsRes = await fetch(`${API_BASE}/projects/${projectId}/assets/${assetId}/subtitles?format=vtt`, {
+          credentials: "include"
+        });
+        if (subsRes.ok) {
+          const vttText = await subsRes.text();
+          const blob = new Blob([vttText], { type: 'text/vtt' });
+          const url = URL.createObjectURL(blob);
+          setSubtitlesUrl(url);
+        }
+      } catch (e) {
+        console.error("Subtitles fetch error:", e);
       }
 
       // Fetch generated clips
@@ -541,6 +572,7 @@ export default function AssetDetailPage({
           body: JSON.stringify({
             candidate_id: candidate.candidate_id,
             title: candidate.title,
+            captions: { enabled: true, style: "standard" }
           }),
         }
       );
@@ -617,7 +649,12 @@ export default function AssetDetailPage({
                 controls
                 className="w-full aspect-video object-contain"
                 playsInline
-              />
+                crossOrigin="anonymous"
+              >
+                {subtitlesUrl && (
+                  <track kind="captions" src={subtitlesUrl} srcLang="en" label="English" default />
+                )}
+              </video>
             ) : (
               <div className="w-full aspect-video flex items-center justify-center bg-gray-900">
                 <Film className="w-12 h-12 text-gray-700" />
@@ -644,6 +681,45 @@ export default function AssetDetailPage({
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Chapters */}
+          {isCompleted && analysis?.chapters && analysis.chapters.length > 0 && (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+              <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-4 flex items-center gap-2">
+                <Clock className="w-4 h-4 text-[#a91d22]" />
+                Smart Chapters
+              </h3>
+              <div className="space-y-2">
+                {analysis.chapters.map((chapter, i) => (
+                  <button
+                    key={i}
+                    onClick={() => {
+                      const video = document.querySelector('video');
+                      if (video) {
+                        video.currentTime = chapter.start;
+                        video.play();
+                      }
+                    }}
+                    className="w-full text-left p-3 hover:bg-red-50 rounded-xl transition-colors group flex items-start gap-4 border border-transparent hover:border-red-100"
+                  >
+                    <span className="text-[#a91d22] font-mono text-sm shrink-0 pt-0.5">
+                      {formatTime(chapter.start)}
+                    </span>
+                    <div>
+                      <h4 className="text-sm font-semibold text-gray-900 group-hover:text-[#a91d22] transition-colors">
+                        {chapter.title}
+                      </h4>
+                      {chapter.summary && (
+                        <p className="text-xs text-gray-500 mt-1 line-clamp-1">
+                          {chapter.summary}
+                        </p>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -881,6 +957,7 @@ export default function AssetDetailPage({
       {previewCandidate && videoUrl && (
         <ClipPreview
           videoUrl={videoUrl}
+          subtitlesUrl={subtitlesUrl}
           start={previewCandidate.start}
           end={previewCandidate.end}
           onClose={() => setPreviewCandidate(null)}

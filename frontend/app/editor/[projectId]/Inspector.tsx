@@ -5,20 +5,91 @@ import { useEditorStore } from "./store";
 import { SlidersHorizontal, AlignLeft, Type, Video, Music } from "lucide-react";
 
 export function Inspector() {
-  const { selectedClipIds, clips, updateClip, saveHistoryState } = useEditorStore();
+  const { selectedClipIds, clips, updateClip, saveHistoryState, settings, updateSettings } = useEditorStore();
   
   if (selectedClipIds.length !== 1) {
+    const isMultiple = selectedClipIds.length > 1;
     return (
-      <div className="w-72 border-l border-gray-800 bg-[#111111] flex flex-col shrink-0">
+      <div className="w-72 border-l border-gray-800 bg-[#111111] flex flex-col shrink-0 overflow-hidden">
         <div className="h-14 border-b border-gray-800 flex items-center px-4 shrink-0 bg-[#141414]">
           <h2 className="text-sm font-medium uppercase tracking-wide flex items-center gap-2">
-            <SlidersHorizontal className="w-4 h-4" /> Inspector
+            <SlidersHorizontal className="w-4 h-4" /> {isMultiple ? "Multiple Selected" : "Project Settings"}
           </h2>
         </div>
-        <div className="flex-1 flex items-center justify-center text-xs text-gray-500 p-4 text-center">
-          {selectedClipIds.length === 0 
-            ? "Select a clip to view properties" 
-            : "Multiple clips selected. Select a single clip to edit properties."}
+        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+          {isMultiple ? (
+            <div className="flex items-center justify-center text-xs text-gray-500 text-center h-full">
+              Multiple clips selected. Select a single clip to edit properties.
+            </div>
+          ) : (
+            <>
+              {/* Project Properties */}
+              <div className="space-y-4">
+                <h3 className="text-xs font-semibold text-gray-400 uppercase">General</h3>
+                
+                <div className="space-y-2">
+                  <label className="text-xs text-gray-400 block">Aspect Ratio</label>
+                  <select 
+                    className="w-full bg-[#1c1c1c] border border-gray-700 rounded p-1.5 text-sm text-white focus:outline-none focus:border-[#a91d22]"
+                    value={settings.aspectRatio}
+                    onChange={(e) => updateSettings({ aspectRatio: e.target.value as any })}
+                  >
+                    <option value="16:9">16:9 (Landscape)</option>
+                    <option value="9:16">9:16 (Portrait)</option>
+                    <option value="1:1">1:1 (Square)</option>
+                    <option value="4:5">4:5 (Social)</option>
+                  </select>
+                </div>
+              </div>
+
+              <hr className="border-gray-800" />
+
+              {/* Captions Properties */}
+              <div className="space-y-4">
+                <h3 className="text-xs font-semibold text-gray-400 uppercase">Captions</h3>
+                
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="accent-[#a91d22] w-4 h-4"
+                    checked={settings.captions?.enabled || false}
+                    onChange={(e) => updateSettings({ captions: { ...settings.captions, enabled: e.target.checked } })}
+                  />
+                  <span className="text-sm text-white font-medium">Enable Captions</span>
+                </label>
+                
+                {settings.captions?.enabled && (
+                  <div className="space-y-3 pl-6 border-l-2 border-gray-800">
+                    <div className="space-y-1">
+                      <label className="text-xs text-gray-400 block">Style</label>
+                      <select 
+                        className="w-full bg-[#1c1c1c] border border-gray-700 rounded p-1.5 text-sm text-white focus:outline-none focus:border-[#a91d22]"
+                        value={settings.captions.style}
+                        onChange={(e) => updateSettings({ captions: { ...settings.captions, style: e.target.value } })}
+                      >
+                        <option value="standard">Standard</option>
+                        <option value="bold">Bold</option>
+                        <option value="karaoke">Karaoke</option>
+                      </select>
+                    </div>
+                    
+                    <div className="space-y-1">
+                      <label className="text-xs text-gray-400 block">Position</label>
+                      <select 
+                        className="w-full bg-[#1c1c1c] border border-gray-700 rounded p-1.5 text-sm text-white focus:outline-none focus:border-[#a91d22]"
+                        value={settings.captions.position}
+                        onChange={(e) => updateSettings({ captions: { ...settings.captions, position: e.target.value } })}
+                      >
+                        <option value="bottom">Bottom</option>
+                        <option value="center">Center</option>
+                        <option value="top">Top</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </div>
     );
