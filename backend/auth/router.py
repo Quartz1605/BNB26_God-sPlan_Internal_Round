@@ -31,8 +31,9 @@ async def login():
         f"response_type=code&"
         f"client_id={GOOGLE_CLIENT_ID}&"
         f"redirect_uri={GOOGLE_REDIRECT_URI}&"
-        f"scope=openid%20email%20profile&"
-        f"access_type=offline"
+        f"scope=openid%20email%20profile%20https://www.googleapis.com/auth/youtube.upload&"
+        f"access_type=offline&"
+        f"prompt=consent"
     )
     return RedirectResponse(google_auth_url)
 
@@ -76,12 +77,17 @@ async def callback(code: str, response: Response):
             "email": email,
             "name": name,
             "picture": picture,
+            "google_access_token": access_token,
             "created_at": datetime.now(timezone.utc)
         }
         result = await users_collection.insert_one(user_doc)
         user_id = str(result.inserted_id)
     else:
         user_id = str(user["_id"])
+        await users_collection.update_one(
+            {"_id": user["_id"]},
+            {"$set": {"google_access_token": access_token}}
+        )
         
     jwt_token = create_jwt_token({"sub": str(user_id), "email": email})
     

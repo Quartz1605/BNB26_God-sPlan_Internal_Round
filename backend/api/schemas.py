@@ -58,6 +58,21 @@ class AssetResponse(BaseModel):
     class Config:
         populate_by_name = True
 
+class UploadInitRequest(BaseModel):
+    filename: str
+    content_type: str
+    file_size: int
+
+class UploadInitResponse(BaseModel):
+    upload_url: str
+    asset_id: str
+    s3_key: str
+
+class UploadCompleteRequest(BaseModel):
+    asset_id: str
+    s3_key: str
+    status: str
+
 class CreatorDNARequest(BaseModel):
     asset_ids: List[str]
 

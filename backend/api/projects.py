@@ -9,7 +9,7 @@ from typing import List
 
 from database import client
 from auth.router import get_current_user
-from .schemas import ProjectCreate, ProjectResponse, AssetResponse
+from .schemas import ProjectCreate, ProjectResponse, AssetResponse, UploadInitRequest, UploadInitResponse, UploadCompleteRequest
 import httpx
 import json
 
@@ -170,6 +170,118 @@ async def upload_asset(
     
     return new_asset
 
+@router.post("/{project_id}/assets/upload/init", response_model=UploadInitResponse)
+async def init_upload(
+    project_id: str,
+    payload: UploadInitRequest,
+    user: dict = Depends(get_current_user)
+):
+    db = get_db()
+    # Verify project belongs to user
+    project = await db.projects.find_one({"_id": ObjectId(project_id), "user_id": str(user["_id"])})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Generate a unique asset ID upfront
+    asset_id = str(ObjectId())
+    
+    # Construct S3 key
+    s3_key = f"creatorai/{user['_id']}/{project_id}/{asset_id}_{payload.filename}"
+
+    # Generate presigned URL for PUT
+    try:
+        presigned_url = s3_client.generate_presigned_url(
+            'put_object',
+            Params={
+                'Bucket': AWS_BUCKET_NAME,
+                'Key': s3_key,
+                'ContentType': payload.content_type
+            },
+            ExpiresIn=3600
+        )
+    except Exception as e:
+        print(f"Failed to generate presigned URL: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate upload URL")
+
+    # Create an initial 'uploading' asset in DB
+    new_asset = {
+        "_id": ObjectId(asset_id),
+        "project_id": project_id,
+        "user_id": str(user["_id"]),
+        "filename": payload.filename,
+        "asset_type": payload.content_type,
+        "file_size": payload.file_size,
+        "s3_key": s3_key,
+        "file_url": "", # Will be populated on complete or dynamically
+        "status": "uploading",
+        "created_at": datetime.now(timezone.utc)
+    }
+    
+    await db.assets.insert_one(new_asset)
+    
+    return {
+        "upload_url": presigned_url,
+        "asset_id": asset_id,
+        "s3_key": s3_key
+    }
+
+@router.post("/{project_id}/assets/upload/complete", response_model=AssetResponse)
+async def complete_upload(
+    project_id: str,
+    payload: UploadCompleteRequest,
+    user: dict = Depends(get_current_user)
+):
+    db = get_db()
+    
+    # Verify project belongs to user
+    project = await db.projects.find_one({"_id": ObjectId(project_id), "user_id": str(user["_id"])})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    asset = await db.assets.find_one({
+        "_id": ObjectId(payload.asset_id),
+        "project_id": project_id,
+        "user_id": str(user["_id"])
+    })
+    
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+
+    if payload.status == "success":
+        # Generate read URL
+        try:
+            file_url = s3_client.generate_presigned_url(
+                'get_object',
+                Params={'Bucket': AWS_BUCKET_NAME, 'Key': payload.s3_key},
+                ExpiresIn=3600
+            )
+        except Exception as e:
+            print(f"Failed to generate presigned URL for read: {e}")
+            file_url = ""
+
+        # Update asset to ready
+        await db.assets.update_one(
+            {"_id": ObjectId(payload.asset_id)},
+            {"$set": {
+                "status": "completed", 
+                "file_url": file_url,
+                "updated_at": datetime.now(timezone.utc)
+            }}
+        )
+        
+        asset["status"] = "completed"
+        asset["file_url"] = file_url
+        asset["_id"] = str(asset["_id"])
+        
+        return asset
+    else:
+        # Upload failed, mark as failed or delete
+        await db.assets.update_one(
+            {"_id": ObjectId(payload.asset_id)},
+            {"$set": {"status": "failed", "updated_at": datetime.now(timezone.utc)}}
+        )
+        raise HTTPException(status_code=400, detail="Upload marked as failed")
+
 @router.get("/{project_id}/assets", response_model=List[AssetResponse])
 async def get_project_assets(project_id: str, user: dict = Depends(get_current_user)):
     db = get_db()
@@ -185,7 +297,10 @@ async def get_project_assets(project_id: str, user: dict = Depends(get_current_u
         a["_id"] = str(a["_id"])
         
         # Regenerate fresh presigned URL to prevent expiration
-        s3_key = f"creatorai/{user['_id']}/{project_id}/{a['filename']}"
+        s3_key = a.get("s3_key")
+        if not s3_key:
+            s3_key = f"creatorai/{user['_id']}/{project_id}/{a['filename']}"
+            
         try:
             fresh_url = s3_client.generate_presigned_url(
                 'get_object',
@@ -201,11 +316,34 @@ async def get_project_assets(project_id: str, user: dict = Depends(get_current_u
 @router.delete("/{project_id}/assets/{asset_id}")
 async def delete_asset(project_id: str, asset_id: str, user: dict = Depends(get_current_user)):
     db = get_db()
+    
+    # First find the asset to get the S3 key
+    asset = await db.assets.find_one({
+        "_id": ObjectId(asset_id), 
+        "project_id": project_id,
+        "user_id": str(user["_id"])
+    })
+    
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+        
+    s3_key = asset.get("s3_key")
+    if not s3_key:
+        # Fallback to old format
+        s3_key = f"creatorai/{user['_id']}/{project_id}/{asset['filename']}"
+        
+    try:
+        s3_client.delete_object(Bucket=AWS_BUCKET_NAME, Key=s3_key)
+    except Exception as e:
+        print(f"Failed to delete asset from S3: {e}")
+        # Continue to delete from DB even if S3 delete fails
+
     result = await db.assets.delete_one({
         "_id": ObjectId(asset_id), 
         "project_id": project_id,
         "user_id": str(user["_id"])
     })
+    
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Asset not found")
     
@@ -256,7 +394,10 @@ async def export_project(
             
         with open(concat_file_path, "w") as f:
             for idx, (clip, asset) in enumerate(valid_clips):
-                source_key = f"creatorai/{user['_id']}/{project_id}/{asset['filename']}"
+                source_key = asset.get("s3_key")
+                if not source_key:
+                    source_key = f"creatorai/{user['_id']}/{project_id}/{asset['filename']}"
+                    
                 local_video_path = os.path.join(temp_dir, f"video_{idx}.mp4")
                 
                 # Download file from S3 to temp directory
@@ -296,22 +437,26 @@ async def export_project(
             # Upload the final stitched video to S3
             s3_client.upload_file(output_file_path, AWS_BUCKET_NAME, export_key)
             
-        except subprocess.CalledProcessError as e:
-            print("FFmpeg Error Output:", e.stderr.decode())
-            # Fallback if FFmpeg fails: Just copy the first video in S3 like before
+        except Exception as e:
+            print("Export Pipeline Error:", str(e))
+            # Fallback if FFmpeg fails or is not installed: Just copy the first video in S3
             if valid_clips:
                 clip, asset = valid_clips[0]
-                source_key = f"creatorai/{user['_id']}/{project_id}/{asset['filename']}"
-                s3_client.copy_object(
-                    Bucket=AWS_BUCKET_NAME,
-                    CopySource={'Bucket': AWS_BUCKET_NAME, 'Key': source_key},
-                    Key=export_key
-                )
+                source_key = asset.get("s3_key")
+                if not source_key:
+                    source_key = f"creatorai/{user['_id']}/{project_id}/{asset['filename']}"
+                    
+                try:
+                    s3_client.copy_object(
+                        Bucket=AWS_BUCKET_NAME,
+                        CopySource={'Bucket': AWS_BUCKET_NAME, 'Key': source_key},
+                        Key=export_key
+                    )
+                except Exception as copy_e:
+                    print("Fallback Copy Error:", str(copy_e))
+                    raise HTTPException(status_code=500, detail="Failed to render export and fallback copy failed.")
             else:
-                raise HTTPException(status_code=500, detail="Failed to render export.")
-        except Exception as e:
-            print("Export Pipeline Error:", e)
-            raise HTTPException(status_code=500, detail="Failed to render export.")
+                raise HTTPException(status_code=500, detail="Failed to render export and no valid clips for fallback.")
 
     # Generate presigned URL for the exported file
     export_url = s3_client.generate_presigned_url(
@@ -327,6 +472,93 @@ async def export_project(
     )
     
     return {"message": "Export completed successfully", "export_url": export_url}
+
+@router.post("/{project_id}/publish/youtube")
+async def publish_to_youtube(
+    project_id: str,
+    user: dict = Depends(get_current_user)
+):
+    db = get_db()
+    project = await db.projects.find_one({"_id": ObjectId(project_id), "user_id": str(user["_id"])})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+        
+    export_url = project.get("last_export_url")
+    if not export_url:
+        raise HTTPException(status_code=400, detail="Project must be exported first before publishing")
+        
+    access_token = user.get("google_access_token")
+    if not access_token:
+        # We need the user to re-authenticate if they don't have an access token with youtube scope
+        raise HTTPException(status_code=401, detail="Google authentication missing. Please logout and login again to grant YouTube permissions.")
+        
+    export_key = f"creatorai/exports/{user['_id']}/{project_id}/final_export.mp4"
+    import tempfile
+    import httpx
+    
+    with tempfile.TemporaryDirectory() as temp_dir:
+        local_video_path = os.path.join(temp_dir, "export.mp4")
+        try:
+            s3_client.download_file(AWS_BUCKET_NAME, export_key, local_video_path)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail="Failed to retrieve exported video from storage.")
+            
+        headers = {
+            "Authorization": f"Bearer {access_token}"
+        }
+        
+        metadata = {
+            "snippet": {
+                "title": project.get("name", "CreatorAI Video"),
+                "description": project.get("description", "Published via CreatorAI"),
+                "tags": ["creatorai"],
+                "categoryId": "22"
+            },
+            "status": {
+                "privacyStatus": "private",
+                "selfDeclaredMadeForKids": False
+            }
+        }
+        
+        async with httpx.AsyncClient(timeout=300.0) as client_http:
+            init_url = "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status"
+            init_res = await client_http.post(
+                init_url,
+                headers={**headers, "X-Upload-Content-Type": "video/mp4"},
+                json=metadata
+            )
+            
+            if init_res.status_code != 200:
+                print("YouTube API Init Error:", init_res.text)
+                raise HTTPException(status_code=500, detail=f"YouTube Init Error: {init_res.text}")
+                
+            upload_url = init_res.headers.get("Location")
+            if not upload_url:
+                raise HTTPException(status_code=500, detail="Failed to get YouTube upload URL.")
+            
+            with open(local_video_path, "rb") as f:
+                video_data = f.read()
+                
+            upload_res = await client_http.put(
+                upload_url,
+                headers=headers,
+                content=video_data
+            )
+            
+            if upload_res.status_code not in (200, 201):
+                print("YouTube API Upload Error:", upload_res.text)
+                raise HTTPException(status_code=500, detail=f"YouTube Upload Error: {upload_res.text}")
+                
+            response_data = upload_res.json()
+            youtube_video_id = response_data.get("id")
+            youtube_url = f"https://youtube.com/watch?v={youtube_video_id}"
+    
+    await db.projects.update_one(
+        {"_id": ObjectId(project_id)},
+        {"$set": {"youtube_url": youtube_url, "youtube_published_at": datetime.now(timezone.utc)}}
+    )
+    
+    return {"message": "Successfully published to YouTube", "youtube_url": youtube_url}
     
 @router.post("/{project_id}/ai-command")
 async def process_ai_command(

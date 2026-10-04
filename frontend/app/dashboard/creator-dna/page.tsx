@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { Fingerprint, CheckCircle2, Play, Video, Loader2, Sparkles, BookOpen, MessageSquare, AlertCircle } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
 import { useRouter } from "next/navigation";
 
 interface Asset {
@@ -323,7 +322,7 @@ export default function CreatorDNAPage() {
                           </div>
                         </div>
                         <p className="text-xs text-gray-500 mt-1">
-                          {formatDistanceToNow(new Date(asset.created_at), { addSuffix: true })}
+                          {new Date(asset.created_at).toLocaleDateString()}
                         </p>
                       </div>
                     </div>

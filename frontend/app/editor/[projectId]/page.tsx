@@ -5,13 +5,14 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft, Undo2, Redo2, Download, Play, Pause, SkipBack, SkipForward,
-  Settings, Film, Music, Image as ImageIcon, Type, Layers, Upload, Plus, Save, Sparkles, Send
+  Settings, Film, Music, Image as ImageIcon, Type, Layers, Upload, Plus, Save, Sparkles, Send, X
 } from "lucide-react";
 import { useEditorStore } from "./store";
 import { Timeline } from "./Timeline";
 import { Canvas } from "./Canvas";
 import { Inspector } from "./Inspector";
 import { AiAssistantPanel } from "./AiAssistantPanel";
+import { UploadManager } from "./UploadManager";
 
 
 interface Asset {
@@ -60,16 +61,49 @@ export default function EditorPage() {
 
   const [isSaving, setIsSaving] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
 
   const canUndo = history.past.length > 0;
   const canRedo = history.future.length > 0;
 
   // Format time helper for the preview area
-  const formatTime = (seconds: number) => {
+  const formatTimeStr = (seconds: number) => {
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
     const ms = Math.floor((seconds % 1) * 100);
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}:${ms.toString().padStart(2, '0')}`;
+  };
+
+  const fetchAssets = () => {
+    fetch(`http://localhost:8000/projects/${projectId}/assets`, { credentials: "include" })
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          // filter out uploading assets, or show them differently. For now, show only completed.
+          const completedAssets = data.filter((a: any) => a.status === "completed" || a.status === undefined);
+          setAssets(completedAssets);
+          
+          // Update clips with fresh presigned URLs to prevent expiration issues
+          const currentClips = useEditorStore.getState().clips;
+          let needsUpdate = false;
+          const updatedClips = currentClips.map(clip => {
+            if (clip.assetId) {
+              const freshAsset = completedAssets.find((a: any) => a._id === clip.assetId);
+              if (freshAsset && freshAsset.file_url !== clip.fileUrl) {
+                needsUpdate = true;
+                return { ...clip, fileUrl: freshAsset.file_url };
+              }
+            }
+            return clip;
+          });
+          
+          if (needsUpdate) {
+            setEditorState({ clips: updatedClips });
+          }
+        }
+
+      })
+      .catch(console.error);
   };
 
   useEffect(() => {
@@ -87,33 +121,34 @@ export default function EditorPage() {
       })
       .catch(console.error);
 
-    fetch(`http://localhost:8000/projects/${projectId}/assets`, { credentials: "include" })
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data)) {
-          setAssets(data);
-          
-          // Update clips with fresh presigned URLs to prevent expiration issues
-          const currentClips = useEditorStore.getState().clips;
-          let needsUpdate = false;
-          const updatedClips = currentClips.map(clip => {
-            if (clip.assetId) {
-              const freshAsset = data.find((a: any) => a._id === clip.assetId);
-              if (freshAsset && freshAsset.file_url !== clip.fileUrl) {
-                needsUpdate = true;
-                return { ...clip, fileUrl: freshAsset.file_url };
-              }
-            }
-            return clip;
-          });
-          
-          if (needsUpdate) {
-            setEditorState({ clips: updatedClips });
-          }
-        }
-      })
-      .catch(console.error);
+    fetchAssets();
   }, [projectId, router]);
+
+  const handleDeleteAsset = async (assetId: string) => {
+    if (!window.confirm("Are you sure you want to delete this asset? This cannot be undone.")) return;
+    
+    // Check if used in timeline
+    const isUsed = clips.some(c => c.assetId === assetId);
+    if (isUsed) {
+      alert("This asset is currently used in the timeline. Please remove it from the timeline first.");
+      return;
+    }
+
+    try {
+      const res = await fetch(`http://localhost:8000/projects/${projectId}/assets/${assetId}`, {
+        method: "DELETE",
+        credentials: "include"
+      });
+      if (res.ok) {
+        setAssets(prev => prev.filter(a => a._id !== assetId));
+      } else {
+        alert("Failed to delete asset");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error deleting asset");
+    }
+  };
 
   // Global Keyboard Shortcuts
   useEffect(() => {
@@ -252,10 +287,9 @@ export default function EditorPage() {
       if (res.ok) {
         const data = await res.json();
         setIsExporting(false);
-        const shouldDownload = window.confirm("Export Complete! Click OK to open your exported video.");
+        const shouldDownload = window.confirm("Export Complete! Click OK to open your exported video in a new tab.");
         if (shouldDownload && data.export_url) {
-          // Setting location.href avoids popup blockers better than window.open in some async contexts
-          window.location.href = data.export_url;
+          window.open(data.export_url, '_blank');
         }
       } else {
         alert("Failed to export project");
@@ -265,6 +299,31 @@ export default function EditorPage() {
       console.error("Export error", err);
       alert("Error exporting project");
       setIsExporting(false);
+    }
+  };
+
+  const handlePublishYouTube = async () => {
+    setIsPublishing(true);
+    try {
+      const res = await fetch(`http://localhost:8000/projects/${projectId}/publish/youtube`, {
+        method: "POST",
+        credentials: "include"
+      });
+      if (res.ok) {
+        alert("Successfully published to YouTube!");
+      } else {
+        try {
+          const errorData = await res.json();
+          alert(`Failed to publish: ${errorData.detail}`);
+        } catch {
+          alert("Failed to publish to YouTube");
+        }
+      }
+    } catch (err) {
+      console.error("Publish error", err);
+      alert("Error publishing to YouTube");
+    } finally {
+      setIsPublishing(false);
     }
   };
 
@@ -324,6 +383,14 @@ export default function EditorPage() {
           >
             {isExporting ? <span className="animate-spin text-lg leading-none">⟳</span> : <Download className="w-4 h-4" />}
             {isExporting ? 'Exporting...' : 'Export'}
+          </button>
+          <button 
+            onClick={handlePublishYouTube}
+            disabled={isPublishing || isExporting}
+            className={`flex items-center gap-2 px-4 py-1.5 ${isPublishing ? 'bg-[#c7262c] opacity-80 cursor-wait' : 'bg-blue-600 hover:bg-blue-700'} text-white text-sm font-medium rounded-md transition-colors`}
+          >
+            {isPublishing ? <span className="animate-spin text-lg leading-none">⟳</span> : <Upload className="w-4 h-4" />}
+            {isPublishing ? 'Publishing...' : 'Publish to YouTube'}
           </button>
         </div>
       </header>
@@ -386,6 +453,8 @@ export default function EditorPage() {
           <div className="flex-1 overflow-y-auto p-3">
             {activeTab === "media" && (
               <div className="space-y-3">
+                <UploadManager projectId={projectId as string} onUploadComplete={fetchAssets} />
+                
                 {assets.length === 0 ? (
                   <div className="text-center py-10 px-4 border border-dashed border-gray-800 rounded-lg">
                     <p className="text-xs text-gray-500">No assets uploaded yet</p>
@@ -408,13 +477,22 @@ export default function EditorPage() {
                         )}
                         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent p-1.5 opacity-0 group-hover:opacity-100 transition-opacity flex justify-between items-end">
                           <p className="text-[10px] truncate max-w-[80%]">{asset.filename}</p>
-                          <button 
-                            onClick={() => handleAddAssetToTimeline(asset)}
-                            className="bg-[#a91d22] hover:bg-[#c7262c] text-white rounded p-0.5"
-                            title="Add to timeline"
-                          >
-                            <Plus className="w-3 h-3" />
-                          </button>
+                          <div className="flex gap-1">
+                            <button 
+                              onClick={() => handleDeleteAsset(asset._id)}
+                              className="bg-gray-800 hover:bg-red-600 text-white rounded p-0.5"
+                              title="Delete asset"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                            <button 
+                              onClick={() => handleAddAssetToTimeline(asset)}
+                              className="bg-[#a91d22] hover:bg-[#c7262c] text-white rounded p-0.5"
+                              title="Add to timeline"
+                            >
+                              <Plus className="w-3 h-3" />
+                            </button>
+                          </div>
                         </div>
                       </div>
                     ))}
