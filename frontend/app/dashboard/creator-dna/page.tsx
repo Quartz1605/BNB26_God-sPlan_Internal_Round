@@ -342,7 +342,7 @@ export default function CreatorDNAPage() {
               className={`px-6 py-2.5 rounded-lg text-sm font-medium text-white transition-all duration-200 flex items-center gap-2 ${
                 selectedAssets.size === 0 || isAnalyzing
                   ? "bg-gray-300 cursor-not-allowed"
-                  : "bg-gradient-to-r from-[#a91d22] to-[#c7262c] hover:shadow-lg hover:shadow-red-900/20"
+                  : "bg-[#a91d22] hover:bg-[#8b151b] shadow-xs"
               }`}
             >
               {isAnalyzing && <Loader2 className="w-4 h-4 animate-spin" />}

@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft, Undo2, Redo2, Download, Play, Pause, SkipBack, SkipForward,
-  Settings, Film, Music, Image as ImageIcon, Type, Layers, Upload, Plus, Save, Sparkles, Send, X
+  Settings, Film, Music, Image as ImageIcon, Type, Layers, Upload, Plus, Save, Sparkles, Send, Diamond, X
 } from "lucide-react";
 import { useEditorStore } from "./store";
 import { Timeline } from "./Timeline";
@@ -13,7 +13,6 @@ import { Canvas } from "./Canvas";
 import { Inspector } from "./Inspector";
 import { AiAssistantPanel } from "./AiAssistantPanel";
 import { UploadManager } from "./UploadManager";
-
 
 interface Asset {
   _id: string;
@@ -44,19 +43,20 @@ export default function EditorPage() {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [project, setProject] = useState<any>(null);
 
-  const { 
-    playhead, 
-    isPlaying, 
-    setIsPlaying, 
-    setPlayhead, 
-    undo, 
+  const {
+    playhead,
+    isPlaying,
+    setIsPlaying,
+    setPlayhead,
+    undo,
     redo,
     history,
     addClip,
     tracks,
     clips,
     settings,
-    setEditorState
+    setEditorState,
+    addTimelineKeyframe
   } = useEditorStore();
 
   const [isSaving, setIsSaving] = useState(false);
@@ -82,7 +82,7 @@ export default function EditorPage() {
           // filter out uploading assets, or show them differently. For now, show only completed.
           const completedAssets = data.filter((a: any) => a.status === "completed" || a.status === undefined);
           setAssets(completedAssets);
-          
+
           // Update clips with fresh presigned URLs to prevent expiration issues
           const currentClips = useEditorStore.getState().clips;
           let needsUpdate = false;
@@ -96,7 +96,7 @@ export default function EditorPage() {
             }
             return clip;
           });
-          
+
           if (needsUpdate) {
             setEditorState({ clips: updatedClips });
           }
@@ -126,7 +126,7 @@ export default function EditorPage() {
 
   const handleDeleteAsset = async (assetId: string) => {
     if (!window.confirm("Are you sure you want to delete this asset? This cannot be undone.")) return;
-    
+
     // Check if used in timeline
     const isUsed = clips.some(c => c.assetId === assetId);
     if (isUsed) {
@@ -180,7 +180,7 @@ export default function EditorPage() {
     const isAudio = asset.asset_type.startsWith('audio');
     const isVideo = asset.asset_type.startsWith('video');
     const track = tracks.find(t => isAudio ? t.type === 'audio' : t.type === 'video');
-    
+
     if (track) {
       if (isVideo || isAudio) {
         // Fetch actual duration dynamically before adding to timeline
@@ -276,14 +276,14 @@ export default function EditorPage() {
   const handleExport = async () => {
     // Save first
     await handleSave();
-    
+
     setIsExporting(true);
     try {
       const res = await fetch(`http://localhost:8000/projects/${projectId}/export`, {
         method: "POST",
         credentials: "include"
       });
-      
+
       if (res.ok) {
         const data = await res.json();
         setIsExporting(false);
@@ -349,7 +349,7 @@ export default function EditorPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <button 
+          <button
             onClick={undo}
             disabled={!canUndo}
             className={`p-1.5 rounded-md transition-colors ${canUndo ? 'text-gray-400 hover:text-white hover:bg-gray-800' : 'text-gray-700 cursor-not-allowed'}`}
@@ -357,7 +357,7 @@ export default function EditorPage() {
           >
             <Undo2 className="w-4 h-4" />
           </button>
-          <button 
+          <button
             onClick={redo}
             disabled={!canRedo}
             className={`p-1.5 rounded-md transition-colors ${canRedo ? 'text-gray-400 hover:text-white hover:bg-gray-800' : 'text-gray-700 cursor-not-allowed'}`}
@@ -368,7 +368,7 @@ export default function EditorPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          <button 
+          <button
             onClick={handleSave}
             disabled={isSaving || isExporting}
             className="flex items-center gap-2 px-4 py-1.5 bg-gray-800 hover:bg-gray-700 text-white text-sm font-medium rounded-md transition-colors"
@@ -376,7 +376,7 @@ export default function EditorPage() {
             {isSaving ? <span className="animate-spin text-lg leading-none">⟳</span> : <Save className="w-4 h-4" />}
             Save
           </button>
-          <button 
+          <button
             onClick={handleExport}
             disabled={isExporting}
             className={`flex items-center gap-2 px-4 py-1.5 ${isExporting ? 'bg-[#c7262c] opacity-80 cursor-wait' : 'bg-[#a91d22] hover:bg-[#c7262c]'} text-white text-sm font-medium rounded-md transition-colors`}
@@ -384,7 +384,7 @@ export default function EditorPage() {
             {isExporting ? <span className="animate-spin text-lg leading-none">⟳</span> : <Download className="w-4 h-4" />}
             {isExporting ? 'Exporting...' : 'Export'}
           </button>
-          <button 
+          <button
             onClick={handlePublishYouTube}
             disabled={isPublishing || isExporting}
             className={`flex items-center gap-2 px-4 py-1.5 ${isPublishing ? 'bg-[#c7262c] opacity-80 cursor-wait' : 'bg-blue-600 hover:bg-blue-700'} text-white text-sm font-medium rounded-md transition-colors`}
@@ -401,39 +401,35 @@ export default function EditorPage() {
         <aside className="w-16 border-r border-gray-800 flex flex-col items-center py-4 gap-4 shrink-0 bg-[#141414]">
           <button
             onClick={() => setActiveTab("media")}
-            className={`p-2.5 rounded-xl transition-all ${
-              activeTab === "media" ? "bg-gray-800 text-white" : "text-gray-500 hover:text-gray-300"
-            }`}
+            className={`p-2.5 rounded-xl transition-all ${activeTab === "media" ? "bg-gray-800 text-white" : "text-gray-500 hover:text-gray-300"
+              }`}
             title="Media"
           >
             <Film className="w-5 h-5" />
           </button>
           <button
             onClick={() => setActiveTab("text")}
-            className={`p-2.5 rounded-xl transition-all ${
-              activeTab === "text" ? "bg-gray-800 text-white" : "text-gray-500 hover:text-gray-300"
-            }`}
+            className={`p-2.5 rounded-xl transition-all ${activeTab === "text" ? "bg-gray-800 text-white" : "text-gray-500 hover:text-gray-300"
+              }`}
             title="Text & Titles"
           >
             <Type className="w-5 h-5" />
           </button>
           <button
             onClick={() => setActiveTab("effects")}
-            className={`p-2.5 rounded-xl transition-all ${
-              activeTab === "effects" ? "bg-gray-800 text-white" : "text-gray-500 hover:text-gray-300"
-            }`}
+            className={`p-2.5 rounded-xl transition-all ${activeTab === "effects" ? "bg-gray-800 text-white" : "text-gray-500 hover:text-gray-300"
+              }`}
             title="Transitions & Effects"
           >
             <Layers className="w-5 h-5" />
           </button>
-          
+
           <div className="flex-1" />
-          
+
           <button
             onClick={() => setActiveTab("ai")}
-            className={`p-2.5 rounded-xl transition-all mb-4 ${
-              activeTab === "ai" ? "bg-indigo-900/50 text-indigo-400" : "text-gray-500 hover:text-indigo-400"
-            }`}
+            className={`p-2.5 rounded-xl transition-all mb-4 ${activeTab === "ai" ? "bg-indigo-900/50 text-indigo-400" : "text-gray-500 hover:text-indigo-400"
+              }`}
             title="CreatorAI Assistant"
           >
             <Sparkles className="w-5 h-5" />
@@ -454,7 +450,7 @@ export default function EditorPage() {
             {activeTab === "media" && (
               <div className="space-y-3">
                 <UploadManager projectId={projectId as string} onUploadComplete={fetchAssets} />
-                
+
                 {assets.length === 0 ? (
                   <div className="text-center py-10 px-4 border border-dashed border-gray-800 rounded-lg">
                     <p className="text-xs text-gray-500">No assets uploaded yet</p>
@@ -475,17 +471,17 @@ export default function EditorPage() {
                             <Music className="w-6 h-6 text-gray-700" />
                           </div>
                         )}
-                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent p-1.5 opacity-0 group-hover:opacity-100 transition-opacity flex justify-between items-end">
+                        <div className="absolute inset-x-0 bottom-0 bg-black/80 p-1.5 opacity-0 group-hover:opacity-100 transition-opacity flex justify-between items-end">
                           <p className="text-[10px] truncate max-w-[80%]">{asset.filename}</p>
                           <div className="flex gap-1">
-                            <button 
+                            <button
                               onClick={() => handleDeleteAsset(asset._id)}
                               className="bg-gray-800 hover:bg-red-600 text-white rounded p-0.5"
                               title="Delete asset"
                             >
                               <X className="w-3 h-3" />
                             </button>
-                            <button 
+                            <button
                               onClick={() => handleAddAssetToTimeline(asset)}
                               className="bg-[#a91d22] hover:bg-[#c7262c] text-white rounded p-0.5"
                               title="Add to timeline"
@@ -500,10 +496,10 @@ export default function EditorPage() {
                 )}
               </div>
             )}
-            
+
             {activeTab === "text" && (
               <div className="space-y-3">
-                <button 
+                <button
                   onClick={handleAddTextToTimeline}
                   className="w-full p-3 bg-gray-900 border border-gray-800 rounded-lg hover:border-gray-600 transition-colors flex flex-col items-center justify-center gap-2"
                 >
@@ -512,13 +508,13 @@ export default function EditorPage() {
                 </button>
               </div>
             )}
-            
+
             {activeTab === "effects" && (
               <div className="text-center py-8 text-xs text-gray-600">
                 Check the Inspector panel to apply crazy effects like Glitch, VHS, and Blur to your selected clips!
               </div>
             )}
-            
+
             {activeTab === "ai" && (
               <AiAssistantPanel />
             )}
@@ -528,10 +524,10 @@ export default function EditorPage() {
         {/* Center Canvas */}
         <div className="flex-1 flex flex-col min-w-0 bg-black relative">
           <Canvas />
-          
+
           {/* Playback Controls */}
           <div className="h-12 border-t border-gray-800 bg-[#141414] flex items-center justify-center gap-4 px-4 shrink-0">
-            <button 
+            <button
               onClick={() => setPlayhead(0)}
               className="p-1.5 hover:bg-gray-800 rounded-full transition-colors text-gray-400 hover:text-white"
             >
@@ -540,8 +536,8 @@ export default function EditorPage() {
             <button onClick={() => setIsPlaying(!isPlaying)} className="p-2 bg-gray-800 hover:bg-gray-700 rounded-full text-white">
               {isPlaying ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current translate-x-[1px]" />}
             </button>
-            
-            <button 
+            <button
+              onClick={() => setPlayhead(settings.duration)}
               className="p-1.5 hover:bg-gray-800 rounded-full transition-colors text-gray-400 hover:text-white"
             >
               <SkipForward className="w-4 h-4 fill-current" />

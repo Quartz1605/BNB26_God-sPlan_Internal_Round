@@ -94,7 +94,8 @@ async def render_clip(
     source_path: str,
     output_path: str,
     start: float,
-    end: float
+    end: float,
+    subtitle_path: str = None
 ) -> str:
     """
     Render a clip from source video using FFmpeg.
@@ -112,6 +113,23 @@ async def render_clip(
             "-ss", str(start),
             "-i", source_path,
             "-t", str(duration),
+        ]
+        
+        if subtitle_path:
+            # Escape path for FFmpeg filter
+            import platform
+            escaped_sub = subtitle_path
+            if platform.system() == "Windows":
+                # Convert to forward slashes
+                escaped_sub = escaped_sub.replace("\\", "/")
+                # Escape the colon in drive letter
+                escaped_sub = escaped_sub.replace(":", "\\:")
+                
+            cmd.extend([
+                "-vf", f"subtitles='{escaped_sub}'"
+            ])
+            
+        cmd.extend([
             "-c:v", "libx264",
             "-preset", "fast",
             "-crf", "23",
@@ -120,7 +138,7 @@ async def render_clip(
             "-movflags", "+faststart",
             "-avoid_negative_ts", "make_zero",
             output_path
-        ]
+        ])
 
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
 

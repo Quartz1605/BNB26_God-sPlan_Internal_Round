@@ -67,12 +67,20 @@ interface ClipCandidate {
   status: string;
 }
 
+interface Chapter {
+  title: string;
+  start: number;
+  end: number;
+  summary: string;
+}
+
 interface AnalysisResult {
   status: string;
   progress: number;
   step: string;
   video_summary: string;
   topics: string[];
+  chapters?: Chapter[];
   clip_candidates: ClipCandidate[];
   video_metadata: Record<string, any>;
   error?: string;
@@ -166,11 +174,13 @@ function AnalysisProgress({ currentStep, progress }: { currentStep: string; prog
 
 function ClipPreview({
   videoUrl,
+  subtitlesUrl,
   start,
   end,
   onClose,
 }: {
   videoUrl: string;
+  subtitlesUrl?: string | null;
   start: number;
   end: number;
   onClose: () => void;
@@ -239,7 +249,12 @@ function ClipPreview({
             className="w-full h-full object-contain"
             muted={isMuted}
             playsInline
-          />
+            crossOrigin="anonymous"
+          >
+            {subtitlesUrl && (
+              <track kind="captions" src={subtitlesUrl} srcLang="en" label="English" default />
+            )}
+          </video>
         </div>
 
         {/* Controls */}
@@ -302,7 +317,7 @@ function ClipCandidateCard({
       <div className="p-5">
         <div className="flex items-start justify-between gap-4 mb-3">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#a91d22] to-[#c7262c] flex items-center justify-center text-white text-sm font-bold shadow-sm">
+            <div className="w-8 h-8 rounded-lg bg-[#a91d22] flex items-center justify-center text-white text-xs font-bold shadow-xs">
               {index + 1}
             </div>
             <div>
@@ -371,7 +386,7 @@ function ClipCandidateCard({
           <button
             onClick={onGenerate}
             disabled={isGenerating}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#a91d22] to-[#c7262c] text-white text-sm font-medium shadow-md shadow-red-900/20 hover:shadow-lg hover:shadow-red-900/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#a91d22] hover:bg-[#8b151b] text-white text-xs font-semibold shadow-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isGenerating ? (
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -401,6 +416,7 @@ export default function AssetDetailPage({
   const [asset, setAsset] = useState<Asset | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [videoUrl, setVideoUrl] = useState<string>("");
+  const [subtitlesUrl, setSubtitlesUrl] = useState<string | null>(null);
   const [generatedClips, setGeneratedClips] = useState<GeneratedClip[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -436,6 +452,21 @@ export default function AssetDetailPage({
         } else {
           setIsAnalyzing(false);
         }
+      }
+
+      // Fetch subtitles
+      try {
+        const subsRes = await fetch(`${API_BASE}/projects/${projectId}/assets/${assetId}/subtitles?format=vtt`, {
+          credentials: "include"
+        });
+        if (subsRes.ok) {
+          const vttText = await subsRes.text();
+          const blob = new Blob([vttText], { type: 'text/vtt' });
+          const url = URL.createObjectURL(blob);
+          setSubtitlesUrl(url);
+        }
+      } catch (e) {
+        console.error("Subtitles fetch error:", e);
       }
 
       // Fetch generated clips
@@ -515,14 +546,14 @@ export default function AssetDetailPage({
         prev
           ? { ...prev, status: "processing", progress: 5, step: "Queued" }
           : {
-              status: "processing",
-              progress: 5,
-              step: "Queued",
-              video_summary: "",
-              topics: [],
-              clip_candidates: [],
-              video_metadata: {},
-            }
+            status: "processing",
+            progress: 5,
+            step: "Queued",
+            video_summary: "",
+            topics: [],
+            clip_candidates: [],
+            video_metadata: {},
+          }
       );
     } catch (err: any) {
       setError(err.message);
@@ -541,6 +572,7 @@ export default function AssetDetailPage({
           body: JSON.stringify({
             candidate_id: candidate.candidate_id,
             title: candidate.title,
+            captions: { enabled: true, style: "standard" }
           }),
         }
       );
@@ -617,7 +649,12 @@ export default function AssetDetailPage({
                 controls
                 className="w-full aspect-video object-contain"
                 playsInline
-              />
+                crossOrigin="anonymous"
+              >
+                {subtitlesUrl && (
+                  <track kind="captions" src={subtitlesUrl} srcLang="en" label="English" default />
+                )}
+              </video>
             ) : (
               <div className="w-full aspect-video flex items-center justify-center bg-gray-900">
                 <Film className="w-12 h-12 text-gray-700" />
@@ -646,6 +683,45 @@ export default function AssetDetailPage({
               )}
             </div>
           )}
+
+          {/* Chapters */}
+          {isCompleted && analysis?.chapters && analysis.chapters.length > 0 && (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+              <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-4 flex items-center gap-2">
+                <Clock className="w-4 h-4 text-[#a91d22]" />
+                Smart Chapters
+              </h3>
+              <div className="space-y-2">
+                {analysis.chapters.map((chapter, i) => (
+                  <button
+                    key={i}
+                    onClick={() => {
+                      const video = document.querySelector('video');
+                      if (video) {
+                        video.currentTime = chapter.start;
+                        video.play();
+                      }
+                    }}
+                    className="w-full text-left p-3 hover:bg-red-50 rounded-xl transition-colors group flex items-start gap-4 border border-transparent hover:border-red-100"
+                  >
+                    <span className="text-[#a91d22] font-mono text-sm shrink-0 pt-0.5">
+                      {formatTime(chapter.start)}
+                    </span>
+                    <div>
+                      <h4 className="text-sm font-semibold text-gray-900 group-hover:text-[#a91d22] transition-colors">
+                        {chapter.title}
+                      </h4>
+                      {chapter.summary && (
+                        <p className="text-xs text-gray-500 mt-1 line-clamp-1">
+                          {chapter.summary}
+                        </p>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Analysis Panel (2 cols) */}
@@ -654,7 +730,7 @@ export default function AssetDetailPage({
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
             {hasNeverAnalyzed && (
               <div className="text-center space-y-4">
-                <div className="w-16 h-16 mx-auto bg-gradient-to-br from-red-50 to-amber-50 rounded-2xl flex items-center justify-center">
+                <div className="w-16 h-16 mx-auto bg-slate-100 rounded-2xl flex items-center justify-center">
                   <Sparkles className="w-8 h-8 text-[#a91d22]" />
                 </div>
                 <div>
@@ -665,7 +741,7 @@ export default function AssetDetailPage({
                 </div>
                 <button
                   onClick={handleAnalyze}
-                  className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-[#a91d22] to-[#c7262c] text-white font-medium shadow-lg shadow-red-900/20 hover:shadow-xl hover:shadow-red-900/30 hover:-translate-y-0.5 transition-all"
+                  className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-[#a91d22] hover:bg-[#8b151b] text-white font-semibold text-sm shadow-xs transition-colors"
                 >
                   <Sparkles className="w-5 h-5" />
                   Find Best Clips
@@ -686,9 +762,9 @@ export default function AssetDetailPage({
                 </div>
 
                 {/* Progress bar */}
-                <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
                   <div
-                    className="h-full bg-gradient-to-r from-[#a91d22] to-[#c7262c] rounded-full transition-all duration-500 ease-out"
+                    className="h-full bg-[#a91d22] rounded-full transition-all duration-500 ease-out"
                     style={{ width: `${analysis?.progress || 0}%` }}
                   />
                 </div>
@@ -713,7 +789,7 @@ export default function AssetDetailPage({
                 </div>
                 <button
                   onClick={handleAnalyze}
-                  className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-[#a91d22] to-[#c7262c] text-white font-medium shadow-lg shadow-red-900/20 hover:shadow-xl hover:shadow-red-900/30 transition-all"
+                  className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-[#a91d22] hover:bg-[#8b151b] text-white font-semibold text-sm shadow-xs transition-colors"
                 >
                   <RefreshCw className="w-5 h-5" />
                   Retry Analysis
@@ -797,7 +873,7 @@ export default function AssetDetailPage({
       {isCompleted && candidates.length > 0 && (
         <div>
           <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 bg-gradient-to-br from-amber-100 to-red-100 rounded-xl flex items-center justify-center">
+            <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center">
               <Zap className="w-5 h-5 text-[#a91d22]" />
             </div>
             <div>
@@ -881,6 +957,7 @@ export default function AssetDetailPage({
       {previewCandidate && videoUrl && (
         <ClipPreview
           videoUrl={videoUrl}
+          subtitlesUrl={subtitlesUrl}
           start={previewCandidate.start}
           end={previewCandidate.end}
           onClose={() => setPreviewCandidate(null)}

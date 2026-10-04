@@ -27,6 +27,8 @@ from database import client
 from auth.router import get_current_user
 from api.ffmpeg_service import get_video_metadata, render_clip
 from api.ai_service import analyze_transcript_with_ai, verify_clip_visually_with_ai
+from api.subtitle_service import generate_srt, generate_vtt
+from fastapi.responses import PlainTextResponse
 
 import boto3
 
@@ -84,11 +86,18 @@ class AnalysisResponse(BaseModel):
     video_metadata: dict = {}
     error: Optional[str] = None
 
+class CaptionConfig(BaseModel):
+    enabled: bool = False
+    source: str = "deepgram"
+    style: str = "standard"
+    position: str = "bottom"
+
 class ClipCreateRequest(BaseModel):
     candidate_id: Optional[str] = None
     start: Optional[float] = None
     end: Optional[float] = None
     title: Optional[str] = "Untitled Clip"
+    captions: Optional[CaptionConfig] = None
 
 class GeneratedClipResponse(BaseModel):
     id: str = Field(alias="_id")
@@ -285,7 +294,9 @@ async def _run_analysis(asset_id: str, project_id: str, user_id: str):
                 "analysis": {
                     "video_summary": analysis.get("video_summary", ""),
                     "topics": analysis.get("topics", []),
-                    "transcript": compact_transcript
+                    "transcript": compact_transcript,
+                    "transcript_segments": transcript_result.segments,
+                    "chapters": analysis.get("chapters", [])
                 },
                 "clip_candidates": analysis.get("clip_candidates", []),
                 "analyzed_at": datetime.now(timezone.utc)
@@ -404,10 +415,31 @@ async def get_analysis(
         "step": asset.get("analysis_step", ""),
         "video_summary": analysis.get("video_summary", ""),
         "topics": analysis.get("topics", []),
+        "chapters": analysis.get("chapters", []),
+        "transcript_segments": analysis.get("transcript_segments", []),
         "clip_candidates": candidates,
         "video_metadata": metadata,
         "error": asset.get("analysis_error")
     }
+
+
+@router.get("/{project_id}/assets/{asset_id}/subtitles", response_class=PlainTextResponse)
+async def get_subtitles(
+    project_id: str,
+    asset_id: str,
+    format: str = "srt",
+    user: dict = Depends(get_current_user)
+):
+    """Get subtitles for a video asset in SRT or VTT format."""
+    _, asset = await _verify_asset_ownership(project_id, asset_id, str(user["_id"]))
+    
+    segments = asset.get("analysis", {}).get("transcript_segments", [])
+    if not segments:
+        raise HTTPException(status_code=404, detail="Subtitles not available")
+        
+    if format.lower() == "vtt":
+        return generate_vtt(segments)
+    return generate_srt(segments)
 
 
 @router.post("/{project_id}/assets/{asset_id}/clips")
@@ -458,6 +490,7 @@ async def generate_clip(
     db = get_db()
     temp_source = None
     temp_output = None
+    subtitle_path = None
 
     try:
         # Download source video from S3
@@ -468,9 +501,33 @@ async def generate_clip(
         logger.info(f"[CLIP_RENDER] Downloading source: {s3_key}")
         s3_client.download_file(AWS_BUCKET_NAME, s3_key, temp_source)
 
+        # Handle Subtitles
+        if clip_request.captions and clip_request.captions.enabled:
+            segments = asset.get("analysis", {}).get("transcript_segments", [])
+            if segments:
+                clip_segments = []
+                for seg in segments:
+                    seg_start = seg.get("start", 0)
+                    seg_end = seg.get("end", 0)
+                    if seg_end > start and seg_start < end:
+                        adj_start = max(0.0, seg_start - start)
+                        adj_end = min(end - start, seg_end - start)
+                        clip_segments.append({
+                            "start": adj_start,
+                            "end": adj_end,
+                            "text": seg.get("text", "")
+                        })
+                
+                if clip_segments:
+                    srt_content = generate_srt(clip_segments)
+                    subtitle_path = os.path.join(TEMP_DIR, f"subs_{asset_id}_{uuid.uuid4().hex[:8]}.srt")
+                    with open(subtitle_path, "w", encoding="utf-8") as f:
+                        f.write(srt_content)
+                    logger.info(f"[CLIP_RENDER] Generated subtitles at {subtitle_path}")
+
         # Render clip with FFmpeg
-        logger.info(f"[CLIP_RENDER] Rendering: start={start}, end={end}")
-        await render_clip(temp_source, temp_output, start, end)
+        logger.info(f"[CLIP_RENDER] Rendering: start={start}, end={end}, subtitles={bool(subtitle_path)}")
+        await render_clip(temp_source, temp_output, start, end, subtitle_path=subtitle_path)
 
         # Get output file size
         clip_file_size = os.path.getsize(temp_output)
@@ -524,7 +581,7 @@ async def generate_clip(
         raise HTTPException(status_code=500, detail=f"Clip generation failed: {str(e)}")
     finally:
         # Cleanup temp files
-        for path in [temp_source, temp_output]:
+        for path in [temp_source, temp_output, subtitle_path]:
             if path and os.path.exists(path):
                 try:
                     os.remove(path)

@@ -40,6 +40,12 @@ You MUST NOT invent timestamps. Every timestamp must originate from the transcri
 If a desired clip begins in the middle of a transcript segment, use the closest sensible timestamp from the transcript.
 Prefer natural sentence boundaries.
 
+Additionally, divide the video into meaningful chronological chapters (4-12 chapters depending on length).
+- Chapters must be chronological with no gaps or overlaps.
+- The first chapter should start at 0.0 or the beginning of meaningful content.
+- The last chapter should cover the final meaningful section.
+- Provide a concise title and brief summary for each chapter.
+
 IMPORTANT SCORING RUBRIC — score each candidate on these dimensions (0-10):
 - hook: How strong is the opening? Does it grab attention?
 - clarity: Can the clip stand alone without extra context?
@@ -55,6 +61,14 @@ Return ONLY valid JSON matching this exact structure:
 {
   "video_summary": "A 2-3 sentence summary of what the video is about based on the transcript",
   "topics": ["topic1", "topic2", "topic3"],
+  "chapters": [
+    {
+      "title": "Introduction",
+      "start": 0.0,
+      "end": 84.2,
+      "summary": "Brief description"
+    }
+  ],
   "clip_candidates": [
     {
       "candidate_id": "candidate_1",
@@ -206,6 +220,49 @@ def _validate_and_fix_candidates(analysis: dict, video_duration: float) -> dict:
     analysis["clip_candidates"] = filtered
     return analysis
 
+def _validate_and_fix_chapters(analysis: dict, video_duration: float) -> dict:
+    validated_chapters = []
+    chapters = analysis.get("chapters", [])
+    
+    # Sort by start time just in case
+    def safe_float(v):
+        try:
+            return float(v)
+        except:
+            return 0.0
+            
+    chapters.sort(key=lambda c: safe_float(c.get("start", 0)))
+    
+    for i, chapter in enumerate(chapters):
+        start = safe_float(chapter.get("start", 0))
+        end = safe_float(chapter.get("end", video_duration))
+        
+        start = max(0.0, min(start, video_duration))
+        end = max(0.0, min(end, video_duration))
+        
+        if start >= end:
+            continue
+            
+        validated_chapters.append({
+            "title": chapter.get("title", f"Chapter {i+1}"),
+            "start": round(start, 1),
+            "end": round(end, 1),
+            "summary": chapter.get("summary", "")
+        })
+        
+    # Ensure no overlaps and continuous timeline where possible
+    for i in range(len(validated_chapters) - 1):
+        # Cap current end to next start if overlapping
+        if validated_chapters[i]["end"] > validated_chapters[i+1]["start"]:
+            validated_chapters[i]["end"] = validated_chapters[i+1]["start"]
+        # If there's a small gap (<2s), close it
+        elif validated_chapters[i+1]["start"] - validated_chapters[i]["end"] < 2.0:
+            validated_chapters[i]["end"] = validated_chapters[i+1]["start"]
+
+    analysis["chapters"] = validated_chapters
+    return analysis
+
+
 
 async def analyze_transcript_with_ai(
     transcript: str,
@@ -264,6 +321,7 @@ async def analyze_transcript_with_ai(
                     continue
 
                 analysis = _validate_and_fix_candidates(analysis, video_duration)
+                analysis = _validate_and_fix_chapters(analysis, video_duration)
                 if not analysis["clip_candidates"]:
                     last_error = "No valid candidates after validation"
                     continue

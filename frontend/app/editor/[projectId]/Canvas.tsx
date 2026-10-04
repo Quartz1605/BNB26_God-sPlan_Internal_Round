@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { useEditorStore } from "./store";
+import { getInterpolatedClipProperties } from "./keyframes";
 import { Film } from "lucide-react";
 
 export function Canvas() {
@@ -51,10 +52,13 @@ export function Canvas() {
             </span>
           ) : (
             activeClips.map((clip) => {
-              const scale = clip.scale || 1;
-              let opacity = clip.opacity ?? 1;
-              const posX = clip.position?.x ?? 50;
-              const posY = clip.position?.y ?? 50;
+              // Interpolate keyframe properties based on current playhead time
+              const interpolated = getInterpolatedClipProperties(clip, playhead);
+              const scale = interpolated.scale;
+              let opacity = interpolated.opacity;
+              const posX = interpolated.position.x;
+              const posY = interpolated.position.y;
+              const fontSize = interpolated.fontSize;
               
               if (clip.type === 'video' || clip.type === 'image') {
                 // Compile effects into CSS filter
@@ -65,8 +69,6 @@ export function Canvas() {
                 if (clip.effects?.includes("invert")) filterString += "invert(100%) ";
                 if (clip.effects?.includes("blur")) filterString += "blur(4px) ";
                 
-                // Add some basic pseudo-classes for glitch/vhs via Tailwind if needed, 
-                // but for now we'll just rely on filters and inline opacity.
                 if (clip.effects?.includes("vhs")) {
                   filterString += "contrast(1.2) saturate(1.5) hue-rotate(-10deg) ";
                 }
@@ -83,7 +85,6 @@ export function Canvas() {
                 let translateX = "-50%";
                 if (clip.effects?.includes("transitionIn:slideRight")) {
                   if (progressIn < 1.0) {
-                    // Slide from left edge (0%) to center (50%)
                     const easeOutQuad = 1 - (1 - progressIn) * (1 - progressIn);
                     translateX = `calc(-50% - ${100 * (1 - easeOutQuad)}%)`;
                   }
@@ -134,7 +135,7 @@ export function Canvas() {
                       top: `${posY}%`,
                       transform: `translate(-50%, -50%) scale(${scale})`,
                       opacity: opacity,
-                      fontSize: `${clip.fontSize || 48}px`,
+                      fontSize: `${fontSize}px`,
                       color: clip.color || '#ffffff',
                       textShadow: '0px 2px 4px rgba(0,0,0,0.5)',
                       fontWeight: 'bold',

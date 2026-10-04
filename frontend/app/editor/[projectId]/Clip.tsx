@@ -2,14 +2,14 @@
 
 import React, { useRef, useState, useEffect } from "react";
 import { useEditorStore, EditorClip } from "./store";
-import { Film, Type, Music } from "lucide-react";
+import { Film, Type, Music, Diamond } from "lucide-react";
 
 interface ClipProps {
   clip: EditorClip;
 }
 
 export function Clip({ clip }: ClipProps) {
-  const { zoom, selectedClipIds, selectClip, updateClip, saveHistoryState } = useEditorStore();
+  const { zoom, selectedClipIds, selectClip, updateClip, saveHistoryState, playhead, setPlayhead } = useEditorStore();
   const isSelected = selectedClipIds.includes(clip.id);
   const clipRef = useRef<HTMLDivElement>(null);
 
@@ -139,10 +139,42 @@ export function Clip({ clip }: ClipProps) {
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
     >
-      <div className="flex items-center px-2 py-1 pointer-events-none w-full h-full">
+      <div className="flex items-center px-2 py-1 pointer-events-none w-full h-full relative">
         {getIcon()}
         <span className="text-[10px] font-medium text-white truncate">{clip.name}</span>
       </div>
+
+      {/* Render Keyframe Markers */}
+      {clip.keyframes && clip.keyframes.length > 0 && (
+        <div className="absolute inset-x-0 bottom-0.5 h-3 pointer-events-none flex items-center">
+          {clip.keyframes.map((kf) => {
+            const percent = (kf.time / clip.duration) * 100;
+            const absoluteKfTime = clip.startTime + kf.time;
+            const isActive = Math.abs(playhead - absoluteKfTime) < 0.08;
+            return (
+              <div
+                key={kf.id}
+                className="absolute -translate-x-1/2 cursor-pointer pointer-events-auto p-0.5 group"
+                style={{ left: `${percent}%` }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPlayhead(absoluteKfTime);
+                  selectClip(clip.id);
+                }}
+                title={`Keyframe @ ${kf.time.toFixed(2)}s`}
+              >
+                <Diamond
+                  className={`w-2.5 h-2.5 transition-transform group-hover:scale-125 ${
+                    isActive
+                      ? 'fill-amber-300 text-amber-300 drop-shadow-[0_0_4px_rgba(252,211,77,0.8)] scale-110'
+                      : 'fill-amber-400 text-amber-500'
+                  }`}
+                />
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Left Trim Handle */}
       <div
@@ -164,3 +196,4 @@ export function Clip({ clip }: ClipProps) {
     </div>
   );
 }
+
